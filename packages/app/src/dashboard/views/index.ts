@@ -67,3 +67,14 @@ export {
   credentialsFragment,
   type CredentialsPageData,
 } from "./credentials.js";
+
+export {
+  addProjectPage,
+  addProjectFragment,
+  type AddProjectPageData,
+} from "./add-project.js";
+
+export {
+  jobProgressFragment,
+  type JobProgressData,
+} from "./job-progress.js";

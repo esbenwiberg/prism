@@ -37,20 +37,47 @@ function toProject(row: typeof projects.$inferSelect): Project {
 // ---------------------------------------------------------------------------
 
 /**
+ * Optional extras when creating a project (e.g. from the web UI).
+ */
+export interface CreateProjectOptions {
+  settings?: Record<string, unknown>;
+  gitUrl?: string;
+  credentialId?: number;
+}
+
+/**
  * Create a new project.
  */
 export async function createProject(
   name: string,
   path: string,
-  settings?: Record<string, unknown>,
+  optionsOrSettings?: CreateProjectOptions | Record<string, unknown>,
 ): Promise<Project> {
   const db = getDb();
+
+  // Backward compatibility: if third arg doesn't look like CreateProjectOptions,
+  // treat it as the legacy `settings` parameter.
+  let gitUrl: string | undefined;
+  let credentialId: number | undefined;
+  let settings: Record<string, unknown> | undefined;
+
+  if (optionsOrSettings && ("gitUrl" in optionsOrSettings || "credentialId" in optionsOrSettings)) {
+    const opts = optionsOrSettings as CreateProjectOptions;
+    gitUrl = opts.gitUrl;
+    credentialId = opts.credentialId;
+    settings = opts.settings;
+  } else {
+    settings = optionsOrSettings as Record<string, unknown> | undefined;
+  }
+
   const [row] = await db
     .insert(projects)
     .values({
       name,
       path,
       settings: settings ?? null,
+      gitUrl: gitUrl ?? null,
+      credentialId: credentialId ?? null,
     })
     .returning();
   return toProject(row);

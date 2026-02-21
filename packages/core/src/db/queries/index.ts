@@ -9,6 +9,7 @@ export {
   listProjects,
   updateProject,
   deleteProject,
+  type CreateProjectOptions,
 } from "./projects.js";
 
 export {
