@@ -6,3 +6,4 @@
  */
 
 export { logger } from "./logger.js";
+export * from "./db/index.js";
