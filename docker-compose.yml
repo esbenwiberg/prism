@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Prism — Local Development Docker Compose
+#
+# Usage:
+#   docker compose up -d          # Start Prism + Postgres
+#   docker compose down           # Stop and remove containers
+#   docker compose down -v        # Stop and remove containers + data
+#
+# Dashboard: http://localhost:3100
+# ---------------------------------------------------------------------------
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: prism
+      POSTGRES_PASSWORD: prism
+      POSTGRES_DB: prism
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prism -d prism"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  prism:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3100:3100"
+    environment:
+      DATABASE_URL: postgresql://prism:prism@postgres:5432/prism
+      DASHBOARD_PORT: "3100"
+      SESSION_SECRET: local-dev-secret
+      SKIP_AUTH: "true"
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3100/login"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  pgdata:

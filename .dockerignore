@@ -1,0 +1,38 @@
+# Dependencies (will be installed inside the container)
+node_modules/
+
+# Build output (will be compiled inside the container)
+dist/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+coverage/
+test/
+
+# Misc
+*.log
+tmp/
+docs/
+blueprints/
+README.md
+CLAUDE.md
