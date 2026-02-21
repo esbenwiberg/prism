@@ -20,6 +20,7 @@ import { blueprintsRouter } from "./routes/blueprints.js";
 import { graphRouter } from "./routes/graph.js";
 import { modulesRouter } from "./routes/modules.js";
 import { credentialsRouter } from "./routes/credentials.js";
+import { exportRouter } from "./routes/export.js";
 
 /**
  * Create and configure the Express application.
@@ -99,6 +100,7 @@ export function createApp(): express.Express {
   app.use(filesRouter);
   app.use(findingsRouter);
   app.use(searchRouter);
+  app.use(exportRouter); // Must be before blueprintsRouter (export path matches :planId param)
   app.use(blueprintsRouter);
   app.use(graphRouter);
   app.use(modulesRouter);

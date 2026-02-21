@@ -103,6 +103,13 @@ function blueprintsListContent(data: BlueprintsListPageData): string {
   if (plans.length === 0) {
     html += `<p style="color:#6b7280;">No blueprints yet. Run <code>prism blueprint</code> to generate a hierarchical redesign plan.</p>`;
   } else {
+    html += `
+<div style="margin-bottom:16px;">
+  <a href="/projects/${projectId}/blueprints/export?format=md"
+     style="display:inline-block;padding:6px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;font-weight:500;">
+    Download All (Markdown)
+  </a>
+</div>`;
     for (const plan of plans) {
       const costInfo = plan.costUsd
         ? `<span style="float:right;font-size:0.75rem;color:#9ca3af;">$${escapeHtml(plan.costUsd)}</span>`
@@ -175,10 +182,22 @@ function blueprintDetailContent(data: BlueprintDetailPageData): string {
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
   <h1 class="page-title" style="margin:0;">${escapeHtml(plan.title)}</h1>
-  <a href="/blueprints/plans/${plan.id}/export"
-     style="display:inline-block;padding:6px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;font-weight:500;">
-    Export Markdown
-  </a>
+  <div style="position:relative;display:inline-block;" class="export-dropdown">
+    <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'"
+       style="padding:6px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;font-weight:500;">
+      Download &#9662;
+    </button>
+    <div style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:160px;z-index:10;">
+      <a href="/projects/${projectId}/blueprints/${plan.id}/export?format=md"
+         style="display:block;padding:8px 16px;color:#111827;text-decoration:none;font-size:0.875rem;border-bottom:1px solid #f3f4f6;">
+        Markdown
+      </a>
+      <a href="/projects/${projectId}/blueprints/${plan.id}/export?format=json"
+         style="display:block;padding:8px 16px;color:#111827;text-decoration:none;font-size:0.875rem;">
+        JSON
+      </a>
+    </div>
+  </div>
 </div>
 
 <div style="display:flex;gap:16px;margin-bottom:16px;">
