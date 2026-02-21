@@ -6,7 +6,8 @@ set -euo pipefail
 # 1. Wait for Postgres to be ready
 # 2. Enable pgvector extension
 # 3. Run Drizzle migrations
-# 4. Start the Prism dashboard
+# 4. Start the Prism dashboard (web) and worker processes
+# 5. Forward SIGTERM/SIGINT to both child processes
 # ---------------------------------------------------------------------------
 
 echo "Prism: waiting for database to be ready..."
@@ -40,5 +41,25 @@ node -e "
 echo "Prism: running database migrations..."
 npx drizzle-kit migrate
 
+# Start web server (background)
 echo "Prism: starting dashboard..."
-exec node packages/app/dist/cli/index.js serve
+node packages/app/dist/cli/index.js serve &
+WEB_PID=$!
+
+# Start worker (background)
+echo "Prism: starting worker..."
+node packages/app/dist/cli/index.js worker &
+WORKER_PID=$!
+
+# Forward SIGTERM/SIGINT to both child processes
+trap "kill $WEB_PID $WORKER_PID 2>/dev/null; wait" SIGTERM SIGINT
+
+# Wait for either process to exit
+wait -n
+EXIT_CODE=$?
+
+echo "Prism: a child process exited (code $EXIT_CODE), shutting down..."
+kill $WEB_PID $WORKER_PID 2>/dev/null
+wait
+
+exit $EXIT_CODE

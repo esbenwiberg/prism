@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "norwayeast"
+    },
+    "baseName": {
+      "value": "prism"
+    },
+    "pgAdminLogin": {
+      "value": "prismadmin"
+    },
+    "pgAdminPassword": {
+      "value": "<REPLACE: PostgreSQL admin password>"
+    },
+    "databaseUrl": {
+      "value": "<REPLACE: postgresql://prismadmin:<password>@<server>.postgres.database.azure.com:5432/prism?sslmode=require>"
+    },
+    "anthropicApiKey": {
+      "value": "<REPLACE: Anthropic API key>"
+    },
+    "credentialEncryptionKey": {
+      "value": "<REPLACE: 32-byte hex-encoded AES-256-GCM key>"
+    },
+    "sessionSecret": {
+      "value": "<REPLACE: random session secret>"
+    },
+    "voyageApiKey": {
+      "value": ""
+    },
+    "openaiApiKey": {
+      "value": ""
+    },
+    "azureTenantId": {
+      "value": ""
+    },
+    "azureClientId": {
+      "value": ""
+    },
+    "azureClientSecret": {
+      "value": ""
+    },
+    "containerImage": {
+      "value": ""
+    }
+  }
+}
