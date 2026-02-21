@@ -60,10 +60,16 @@ import {
   getExistingInputHashes,
   bulkInsertSummaries,
   bulkInsertEmbeddings,
+  getSummariesByLevel,
 } from "../db/queries/index.js";
 import { chunkFileSymbols, filterSummarisableSymbols } from "./semantic/chunker.js";
 import { summariseBatch, type SummariseInput } from "./semantic/summarizer.js";
 import { createEmbedder } from "./semantic/embedder.js";
+
+// Analysis layer imports
+import { rollupFileSummaries, rollupModuleSummaries, rollupSystemSummary } from "./analysis/rollup.js";
+import { runPatternDetection } from "./analysis/patterns.js";
+import { runGapAnalysis } from "./analysis/gap-analysis.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -508,10 +514,13 @@ export async function runPipeline(
           result = await executeSemanticLayer(context);
           break;
 
-        // Other layers are not yet implemented — mark as pending
         case "analysis":
+          result = await executeAnalysisLayer(context);
+          break;
+
+        // Blueprint is a separate command, not part of the index pipeline
         case "blueprint":
-          logger.info({ layer }, "Layer not yet implemented, skipping");
+          logger.info({ layer }, "Blueprint layer is a separate command, skipping in pipeline");
           result = {
             layer,
             status: "pending",
@@ -1081,6 +1090,160 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
       Date.now() - startTime,
     );
 
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Analysis layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute the analysis layer (Layer 4).
+ *
+ * 1. Hierarchical summary rollup (file -> module -> system)
+ * 2. Pattern detection (all detectors)
+ * 3. Gap analysis (docs intent vs code reality)
+ */
+async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult> {
+  const { project, config, budget } = context;
+  const startTime = Date.now();
+
+  if (!config.analysis.enabled) {
+    logger.info({ projectId: project.id }, "Analysis layer disabled, skipping");
+    return {
+      layer: "analysis",
+      status: "completed",
+      filesProcessed: 0,
+      filesTotal: 0,
+      durationMs: Date.now() - startTime,
+      costUsd: 0,
+    };
+  }
+
+  logger.info({ projectId: project.id }, "Starting analysis layer");
+
+  const indexRun = await createIndexRun(project.id, "analysis", 0);
+  let totalCostUsd = 0;
+
+  try {
+    // 1. Hierarchical summary rollup
+    // Get existing function-level summaries from semantic layer
+    const functionSummaries = await getSummariesByLevel(project.id, "function");
+    logger.info(
+      { count: functionSummaries.length },
+      "Function summaries available for rollup",
+    );
+
+    // Build file path -> metadata map
+    const projectFiles = await getProjectFiles(project.id);
+    const projectSymbols = await getSymbolsByProjectId(project.id);
+    const symbolCountByFile = new Map<number, number>();
+    for (const s of projectSymbols) {
+      symbolCountByFile.set(s.fileId, (symbolCountByFile.get(s.fileId) ?? 0) + 1);
+    }
+
+    const filePathMap = new Map<string, { language: string; symbolCount: number }>();
+    for (const f of projectFiles) {
+      filePathMap.set(f.path, {
+        language: f.language ?? "unknown",
+        symbolCount: symbolCountByFile.get(f.id) ?? 0,
+      });
+    }
+
+    // File-level rollup
+    const fileSummaries = await rollupFileSummaries(
+      project.id,
+      functionSummaries,
+      filePathMap,
+      config.analysis,
+      budget,
+    );
+    totalCostUsd += fileSummaries.reduce(
+      (sum, s) => sum + (s.costUsd ? Number(s.costUsd) : 0),
+      0,
+    );
+
+    // Module-level rollup
+    const moduleSummaries = await rollupModuleSummaries(
+      project.id,
+      fileSummaries,
+      config.analysis,
+      budget,
+    );
+    totalCostUsd += moduleSummaries.reduce(
+      (sum, s) => sum + (s.costUsd ? Number(s.costUsd) : 0),
+      0,
+    );
+
+    // System-level rollup
+    const systemSummary = await rollupSystemSummary(
+      project.id,
+      project.name,
+      moduleSummaries,
+      config.analysis,
+      budget,
+    );
+    if (systemSummary?.costUsd) {
+      totalCostUsd += Number(systemSummary.costUsd);
+    }
+
+    // 2. Pattern detection (runs all detectors)
+    const { count: findingsCount } = await runPatternDetection(project.id);
+
+    // 3. Gap analysis
+    // Re-read files from disk to build doc intent
+    const allFiles = await walkProjectFiles(
+      project.path,
+      config.structural.skipPatterns,
+      config.structural.maxFileSizeBytes,
+    );
+    const readmeResults = parseDocFiles(allFiles);
+    const configInfos = parseConfigFiles(allFiles);
+    const commentResults = extractCommentsFromFiles(allFiles);
+    const techStack = buildTechStack(configInfos, allFiles);
+    const intent = assembleIntent(readmeResults, configInfos, commentResults, techStack);
+    const intentText = buildIntentDocContent(intent);
+
+    const gapFindings = await runGapAnalysis(
+      project.id,
+      project.name,
+      intentText,
+      systemSummary?.content ?? "",
+      moduleSummaries,
+      config.analysis,
+      budget,
+    );
+
+    const durationMs = Date.now() - startTime;
+    const filesProcessed = fileSummaries.length + moduleSummaries.length + (systemSummary ? 1 : 0);
+
+    await completeIndexRun(indexRun.id, filesProcessed, durationMs, totalCostUsd);
+
+    logger.info(
+      {
+        fileSummaries: fileSummaries.length,
+        moduleSummaries: moduleSummaries.length,
+        hasSystemSummary: !!systemSummary,
+        findings: findingsCount,
+        gaps: gapFindings.length,
+        costUsd: totalCostUsd.toFixed(4),
+        durationMs,
+      },
+      "Analysis layer complete",
+    );
+
+    return {
+      layer: "analysis",
+      status: "completed",
+      filesProcessed,
+      filesTotal: filesProcessed,
+      durationMs,
+      costUsd: totalCostUsd,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await failIndexRun(indexRun.id, errorMessage, 0, Date.now() - startTime);
     throw err;
   }
 }

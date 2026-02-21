@@ -14,6 +14,8 @@ import { indexCommand } from "./commands/index-cmd.js";
 import { statusCommand } from "./commands/status.js";
 import { serveCommand } from "./commands/serve.js";
 import { searchCommand } from "./commands/search.js";
+import { analyzeCommand } from "./commands/analyze.js";
+import { blueprintCommand } from "./commands/blueprint-cmd.js";
 
 const program = new Command();
 
@@ -27,6 +29,8 @@ program.addCommand(indexCommand);
 program.addCommand(statusCommand);
 program.addCommand(serveCommand);
 program.addCommand(searchCommand);
+program.addCommand(analyzeCommand);
+program.addCommand(blueprintCommand);
 
 // Parse and execute.
 program.parseAsync(process.argv).then(

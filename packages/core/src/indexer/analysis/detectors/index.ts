@@ -15,3 +15,21 @@ export {
   type SymbolInfo,
   type SymbolReference,
 } from "./dead-code.js";
+
+export {
+  detectGodModules,
+  type FileMetricsInput,
+  type GodModuleThresholds,
+} from "./god-modules.js";
+
+export {
+  detectLayeringViolations,
+  detectLayer,
+  type LayeringEdge,
+} from "./layering.js";
+
+export {
+  detectCouplingIssues,
+  type CouplingMetricsInput,
+  type CouplingThresholds,
+} from "./coupling.js";

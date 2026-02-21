@@ -67,6 +67,7 @@ export {
   bulkInsertSummaries,
   getSummaryByTargetId,
   getSummariesByProjectId,
+  getSummariesByLevel,
   deleteSummariesByProjectId,
   getExistingInputHashes,
   type InsertSummaryInput,
@@ -83,3 +84,14 @@ export {
   type EmbeddingRow,
   type SimilaritySearchResult,
 } from "./embeddings.js";
+
+export {
+  insertBlueprint,
+  bulkInsertBlueprints,
+  getBlueprintsByProjectId,
+  getBlueprint,
+  deleteBlueprintsByProjectId,
+  countBlueprintsByProjectId,
+  type InsertBlueprintInput,
+  type BlueprintRow,
+} from "./blueprints.js";

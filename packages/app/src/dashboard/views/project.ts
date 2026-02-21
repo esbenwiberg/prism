@@ -35,7 +35,7 @@ export function projectPage(data: ProjectPageData): string {
 </div>`;
 
   const nav = `
-<div style="display:flex;gap:12px;margin-bottom:24px;">
+<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
   <a href="/projects/${project.id}/files"
      hx-get="/projects/${project.id}/files"
      hx-target="#main-content"
@@ -43,12 +43,33 @@ export function projectPage(data: ProjectPageData): string {
      style="padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
     Browse Files
   </a>
+  <a href="/projects/${project.id}/modules"
+     hx-get="/projects/${project.id}/modules"
+     hx-target="#main-content"
+     hx-push-url="true"
+     style="padding:8px 16px;background:#0891b2;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+    Modules
+  </a>
   <a href="/projects/${project.id}/findings"
      hx-get="/projects/${project.id}/findings"
      hx-target="#main-content"
      hx-push-url="true"
      style="padding:8px 16px;background:#7c3aed;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
     View Findings
+  </a>
+  <a href="/projects/${project.id}/blueprints"
+     hx-get="/projects/${project.id}/blueprints"
+     hx-target="#main-content"
+     hx-push-url="true"
+     style="padding:8px 16px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+    Blueprints
+  </a>
+  <a href="/projects/${project.id}/graph"
+     hx-get="/projects/${project.id}/graph"
+     hx-target="#main-content"
+     hx-push-url="true"
+     style="padding:8px 16px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+    Dependency Graph
   </a>
 </div>`;
 

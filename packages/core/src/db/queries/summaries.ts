@@ -93,6 +93,25 @@ export async function getSummariesByProjectId(
 }
 
 /**
+ * Get summaries for a project filtered by level.
+ */
+export async function getSummariesByLevel(
+  projectId: number,
+  level: string,
+): Promise<SummaryRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(summaries)
+    .where(
+      and(
+        eq(summaries.projectId, projectId),
+        eq(summaries.level, level),
+      ),
+    );
+}
+
+/**
  * Delete all summaries for a project.
  */
 export async function deleteSummariesByProjectId(

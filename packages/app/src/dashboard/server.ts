@@ -16,6 +16,9 @@ import { projectRouter } from "./routes/project.js";
 import { filesRouter } from "./routes/files.js";
 import { findingsRouter } from "./routes/findings.js";
 import { searchRouter } from "./routes/search.js";
+import { blueprintsRouter } from "./routes/blueprints.js";
+import { graphRouter } from "./routes/graph.js";
+import { modulesRouter } from "./routes/modules.js";
 
 /**
  * Create and configure the Express application.
@@ -92,6 +95,9 @@ export function createApp(): express.Express {
   app.use(filesRouter);
   app.use(findingsRouter);
   app.use(searchRouter);
+  app.use(blueprintsRouter);
+  app.use(graphRouter);
+  app.use(modulesRouter);
 
   return app;
 }

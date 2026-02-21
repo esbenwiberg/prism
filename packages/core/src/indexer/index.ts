@@ -91,11 +91,39 @@ export {
   buildAdjacencyList,
   detectCircularDeps,
   detectDeadCode,
+  detectGodModules,
+  detectLayeringViolations,
+  detectLayer,
+  detectCouplingIssues,
   type DepEdge,
   type DetectorFinding,
   type SymbolInfo,
   type SymbolReference,
+  type FileMetricsInput,
+  type LayeringEdge,
+  type CouplingMetricsInput,
+  type GodModuleThresholds,
+  type CouplingThresholds,
 } from "./analysis/detectors/index.js";
+
+// Analysis orchestrators
+export {
+  rollupFileSummaries,
+  rollupModuleSummaries,
+  rollupSystemSummary,
+  loadTemplate,
+  resetTemplateCache,
+} from "./analysis/rollup.js";
+
+export {
+  runPatternDetection,
+} from "./analysis/patterns.js";
+
+export {
+  runGapAnalysis,
+  parseGapFindings,
+  type GapFinding,
+} from "./analysis/gap-analysis.js";
 
 // Semantic sub-modules
 export {
