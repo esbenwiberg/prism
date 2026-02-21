@@ -14,7 +14,9 @@
     "js-yaml": "^4.1.1",
     "pg": "^8.18.0",
     "pgvector": "^0.2.1",
-    "pino": "^9.6.0"
+    "pino": "^9.6.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.3"
   },
   "engines": {
     "node": ">=22"

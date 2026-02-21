@@ -1,12 +1,15 @@
 /**
  * `prism index` command — run the indexing pipeline on a project.
- *
- * This is a stub that will be implemented in a later milestone.
  */
 
 import { resolve } from "node:path";
 import { Command } from "commander";
-import { logger, initConfig, getProjectByPath } from "@prism/core";
+import {
+  logger,
+  initConfig,
+  getProjectByPath,
+  runPipeline,
+} from "@prism/core";
 import type { LayerName } from "@prism/core";
 
 export const indexCommand = new Command("index")
@@ -36,12 +39,46 @@ export const indexCommand = new Command("index")
 
       logger.info(
         { projectId: project.id, layer: opts.layer, full: opts.full },
-        "Starting indexing pipeline (stub)",
+        "Starting indexing pipeline",
       );
 
-      // TODO: Implement pipeline orchestration in a later milestone.
-      console.log(
-        `Indexing pipeline not yet implemented. Project: ${project.name} (id=${project.id})`,
-      );
+      try {
+        const results = await runPipeline(project, {
+          layers: opts.layer ? [opts.layer] : undefined,
+          fullReindex: opts.full,
+        });
+
+        // Print summary
+        for (const result of results) {
+          const statusIcon =
+            result.status === "completed"
+              ? "done"
+              : result.status === "failed"
+                ? "FAILED"
+                : "skipped";
+
+          console.log(
+            `  ${result.layer}: ${statusIcon} — ${result.filesProcessed}/${result.filesTotal} files (${result.durationMs}ms)`,
+          );
+
+          if (result.error) {
+            console.error(`    Error: ${result.error}`);
+          }
+        }
+
+        const anyFailed = results.some((r) => r.status === "failed");
+        if (anyFailed) {
+          process.exitCode = 1;
+        }
+      } catch (err) {
+        logger.error(
+          { error: err instanceof Error ? err.message : String(err) },
+          "Pipeline failed",
+        );
+        console.error(
+          `Pipeline error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exitCode = 1;
+      }
     },
   );
