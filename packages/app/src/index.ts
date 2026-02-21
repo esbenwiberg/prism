@@ -36,6 +36,7 @@ export {
   type HierarchicalBlueprintResult,
 } from "./blueprint/generator.js";
 export { renderMasterPlanMarkdown, renderPhaseMarkdown, renderFullBlueprintMarkdown } from "./blueprint/markdown.js";
+// Legacy splitter — no longer used by hierarchical generator, kept for backward compat
 export { splitBySubsystem, type SubsystemGroup } from "./blueprint/splitter.js";
 
 // CLI is invoked directly via its entry point; no need to re-export here.

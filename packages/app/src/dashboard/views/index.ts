@@ -37,10 +37,16 @@ export {
 } from "./search.js";
 
 export {
-  blueprintsPage,
-  blueprintsFragment,
-  type BlueprintViewData,
-  type BlueprintsPageData,
+  blueprintsListPage,
+  blueprintsListFragment,
+  blueprintDetailPage,
+  blueprintDetailFragment,
+  type PlanListItem,
+  type PlanViewData,
+  type PhaseViewData,
+  type MilestoneViewData,
+  type BlueprintsListPageData,
+  type BlueprintDetailPageData,
 } from "./blueprints.js";
 
 export {

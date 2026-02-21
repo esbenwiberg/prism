@@ -51,7 +51,7 @@ const DEFAULT_CONFIG: PrismConfig = {
   blueprint: {
     enabled: true,
     model: "claude-sonnet-4-6-20250514",
-    budgetUsd: 5.0,
+    budgetUsd: 10.0,
   },
   indexer: {
     batchSize: 100,

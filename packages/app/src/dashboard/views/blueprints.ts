@@ -1,74 +1,290 @@
 /**
- * Blueprints view — lists blueprint proposals with full details.
+ * Blueprints views — hierarchical blueprint plans with phase accordion.
  */
 
 import { layout } from "./layout.js";
 import { escapeHtml, card, badge, type BadgeVariant } from "./components.js";
+import type { Risk } from "../../blueprint/types.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface BlueprintViewData {
+export interface PlanListItem {
   id: number;
   title: string;
-  subsystem: string | null;
+  goal: string | null;
   summary: string | null;
-  proposedArchitecture: string | null;
-  moduleChanges: unknown;
-  migrationPath: string | null;
-  risks: unknown;
-  rationale: string | null;
   model: string | null;
   costUsd: string | null;
+  createdAt: Date;
 }
 
-export interface BlueprintsPageData {
+export interface MilestoneViewData {
+  id: number;
+  milestoneOrder: number;
+  title: string;
+  intent: string | null;
+  keyFiles: string[] | null;
+  verification: string | null;
+  details: string | null;
+}
+
+export interface PhaseViewData {
+  id: number;
+  phaseOrder: number;
+  title: string;
+  intent: string | null;
+  milestoneCount: number | null;
+  model: string | null;
+  costUsd: string | null;
+  milestones: MilestoneViewData[];
+}
+
+export interface PlanViewData {
+  id: number;
+  title: string;
+  goal: string | null;
+  summary: string | null;
+  nonGoals: string[] | null;
+  acceptanceCriteria: string[] | null;
+  risks: Risk[] | null;
+  model: string | null;
+  costUsd: string | null;
+  createdAt: Date;
+}
+
+export interface BlueprintsListPageData {
   projectId: number;
   projectName: string;
-  blueprints: BlueprintViewData[];
+  plans: PlanListItem[];
   userName: string;
+}
+
+export interface BlueprintDetailPageData {
+  projectId: number;
+  projectName: string;
+  plan: PlanViewData;
+  phases: PhaseViewData[];
+  userName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Plans list page
+// ---------------------------------------------------------------------------
+
+export function blueprintsListPage(data: BlueprintsListPageData): string {
+  return layout({
+    title: `${data.projectName} — Blueprints`,
+    content: blueprintsListContent(data),
+    userName: data.userName,
+    activeNav: `project-${data.projectId}`,
+  });
+}
+
+export function blueprintsListFragment(data: BlueprintsListPageData): string {
+  return blueprintsListContent(data);
+}
+
+function blueprintsListContent(data: BlueprintsListPageData): string {
+  const { projectId, projectName, plans } = data;
+
+  let html = `
+<div style="margin-bottom:16px;font-size:0.875rem;">
+  <a href="/projects/${projectId}"
+     hx-get="/projects/${projectId}"
+     hx-target="#main-content"
+     hx-push-url="true">${escapeHtml(projectName)}</a>
+  <span style="color:#9ca3af;"> / </span>
+  <span style="color:#6b7280;">Blueprints</span>
+</div>
+<h1 class="page-title">Blueprints (${plans.length})</h1>`;
+
+  if (plans.length === 0) {
+    html += `<p style="color:#6b7280;">No blueprints yet. Run <code>prism blueprint</code> to generate a hierarchical redesign plan.</p>`;
+  } else {
+    for (const plan of plans) {
+      const costInfo = plan.costUsd
+        ? `<span style="float:right;font-size:0.75rem;color:#9ca3af;">$${escapeHtml(plan.costUsd)}</span>`
+        : "";
+
+      const summaryHtml = plan.summary
+        ? `<p style="margin:8px 0;color:#374151;font-size:0.875rem;">${escapeHtml(truncate(plan.summary, 200))}</p>`
+        : "";
+
+      const goalHtml = plan.goal
+        ? `<p style="margin:4px 0;font-size:0.8125rem;color:#6b7280;">Goal: ${escapeHtml(plan.goal)}</p>`
+        : "";
+
+      html += `
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;cursor:pointer;"
+     hx-get="/projects/${projectId}/blueprints/${plan.id}"
+     hx-target="#main-content"
+     hx-push-url="true">
+  <h3 style="margin:0 0 8px 0;font-size:1rem;font-weight:600;color:#111827;">
+    ${escapeHtml(plan.title)} ${costInfo}
+  </h3>
+  ${goalHtml}
+  ${summaryHtml}
+  <div style="font-size:0.75rem;color:#9ca3af;margin-top:8px;">
+    Created: ${plan.createdAt.toLocaleDateString()}
+  </div>
+</div>`;
+    }
+  }
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Plan detail page (phases + milestones accordion)
+// ---------------------------------------------------------------------------
+
+export function blueprintDetailPage(data: BlueprintDetailPageData): string {
+  return layout({
+    title: `${data.projectName} — ${data.plan.title}`,
+    content: blueprintDetailContent(data),
+    userName: data.userName,
+    activeNav: `project-${data.projectId}`,
+  });
+}
+
+export function blueprintDetailFragment(data: BlueprintDetailPageData): string {
+  return blueprintDetailContent(data);
+}
+
+function blueprintDetailContent(data: BlueprintDetailPageData): string {
+  const { projectId, projectName, plan, phases } = data;
+
+  const totalMilestones = phases.reduce((n, p) => n + p.milestones.length, 0);
+
+  let html = `
+<div style="margin-bottom:16px;font-size:0.875rem;">
+  <a href="/projects/${projectId}"
+     hx-get="/projects/${projectId}"
+     hx-target="#main-content"
+     hx-push-url="true">${escapeHtml(projectName)}</a>
+  <span style="color:#9ca3af;"> / </span>
+  <a href="/projects/${projectId}/blueprints"
+     hx-get="/projects/${projectId}/blueprints"
+     hx-target="#main-content"
+     hx-push-url="true">Blueprints</a>
+  <span style="color:#9ca3af;"> / </span>
+  <span style="color:#6b7280;">${escapeHtml(plan.title)}</span>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  <h1 class="page-title" style="margin:0;">${escapeHtml(plan.title)}</h1>
+  <a href="/blueprints/plans/${plan.id}/export"
+     style="display:inline-block;padding:6px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;font-weight:500;">
+    Export Markdown
+  </a>
+</div>
+
+<div style="display:flex;gap:16px;margin-bottom:16px;">
+  ${statBox("Phases", String(phases.length))}
+  ${statBox("Milestones", String(totalMilestones))}
+  ${plan.costUsd ? statBox("Cost", `$${plan.costUsd}`) : ""}
+  ${plan.model ? statBox("Model", plan.model) : ""}
+</div>`;
+
+  // Goal
+  if (plan.goal) {
+    html += `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:16px;">
+      <strong style="color:#1e40af;">Goal:</strong> <span style="color:#1e3a5f;">${escapeHtml(plan.goal)}</span>
+    </div>`;
+  }
+
+  // Summary
+  if (plan.summary) {
+    html += card("Summary", `<p style="margin:0;color:#374151;white-space:pre-wrap;font-size:0.875rem;">${escapeHtml(plan.summary)}</p>`);
+  }
+
+  // Non-goals
+  if (plan.nonGoals && plan.nonGoals.length > 0) {
+    html += card("Non-Goals", `<ul style="margin:0;padding-left:20px;">${plan.nonGoals.map((ng) => `<li style="color:#374151;font-size:0.875rem;">${escapeHtml(ng)}</li>`).join("")}</ul>`);
+  }
+
+  // Risks
+  if (plan.risks && plan.risks.length > 0) {
+    const risksHtml = plan.risks.map((r) => {
+      const sevBadge = badge(r.severity, riskVariant(r.severity));
+      return `<li style="margin-bottom:4px;">${sevBadge} ${escapeHtml(r.risk)} <span style="color:#059669;font-size:0.8125rem;">(${escapeHtml(r.mitigation)})</span></li>`;
+    }).join("");
+    html += card("Risks", `<ul style="margin:0;padding-left:16px;list-style:disc;">${risksHtml}</ul>`);
+  }
+
+  // Phase accordion
+  html += `<h2 style="margin:24px 0 12px 0;font-size:1.125rem;font-weight:600;">Phases</h2>`;
+
+  for (const phase of phases) {
+    const phaseId = `phase-${phase.id}`;
+
+    html += `
+<details style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;" open>
+  <summary style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#111827;">
+    <span>Phase ${phase.phaseOrder}: ${escapeHtml(phase.title)} ${badge(String(phase.milestones.length) + " milestones", "info")}</span>
+    <a href="/blueprints/phases/${phase.id}/export"
+       onclick="event.stopPropagation();"
+       style="font-size:0.75rem;font-weight:400;color:#2563eb;text-decoration:none;">
+      Export
+    </a>
+  </summary>
+  <div style="padding:0 16px 16px 16px;">`;
+
+    if (phase.intent) {
+      html += `<p style="color:#6b7280;font-size:0.875rem;margin:0 0 12px 0;">${escapeHtml(phase.intent)}</p>`;
+    }
+
+    for (const ms of phase.milestones) {
+      html += renderMilestone(ms);
+    }
+
+    html += `</div></details>`;
+  }
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Milestone rendering
+// ---------------------------------------------------------------------------
+
+function renderMilestone(ms: MilestoneViewData): string {
+  let html = `
+<div style="border-left:3px solid #e5e7eb;padding:8px 12px;margin-bottom:12px;">
+  <div style="font-weight:600;font-size:0.875rem;color:#111827;margin-bottom:4px;">
+    ${ms.milestoneOrder}. ${escapeHtml(ms.title)}
+  </div>`;
+
+  if (ms.intent) {
+    html += `<p style="margin:0 0 4px 0;color:#4b5563;font-size:0.8125rem;">${escapeHtml(ms.intent)}</p>`;
+  }
+
+  if (ms.details) {
+    html += `<p style="margin:0 0 4px 0;color:#4b5563;font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(ms.details)}</p>`;
+  }
+
+  if (ms.keyFiles && ms.keyFiles.length > 0) {
+    html += `<div style="margin:4px 0;font-size:0.75rem;color:#6b7280;">
+      <strong>Key files:</strong> ${ms.keyFiles.map((f) => `<code>${escapeHtml(f)}</code>`).join(", ")}
+    </div>`;
+  }
+
+  if (ms.verification) {
+    html += `<div style="margin:4px 0;font-size:0.75rem;">
+      <strong style="color:#6b7280;">Verification:</strong>
+      <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:0.75rem;">${escapeHtml(ms.verification)}</code>
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function renderModuleChanges(changes: unknown): string {
-  if (!Array.isArray(changes) || changes.length === 0) return "<em>None</em>";
-
-  return `<ul style="margin:0;padding-left:16px;list-style:disc;">
-    ${(changes as Array<{ module?: string; action?: string; description?: string }>)
-      .map((c) => {
-        const actionBadge = badge(c.action ?? "modify", actionVariant(c.action ?? "modify"));
-        return `<li style="margin-bottom:4px;">${actionBadge} <strong>${escapeHtml(c.module ?? "unknown")}</strong> — ${escapeHtml(c.description ?? "")}</li>`;
-      })
-      .join("")}
-  </ul>`;
-}
-
-function renderRisks(risks: unknown): string {
-  if (!Array.isArray(risks) || risks.length === 0) return "<em>No risks identified</em>";
-
-  return `<ul style="margin:0;padding-left:16px;list-style:disc;">
-    ${(risks as Array<{ risk?: string; severity?: string; mitigation?: string }>)
-      .map((r) => {
-        const sevBadge = badge(r.severity ?? "low", riskVariant(r.severity ?? "low"));
-        return `<li style="margin-bottom:4px;">${sevBadge} ${escapeHtml(r.risk ?? "")} <span style="color:#059669;font-size:0.8125rem;">(Mitigation: ${escapeHtml(r.mitigation ?? "N/A")})</span></li>`;
-      })
-      .join("")}
-  </ul>`;
-}
-
-function actionVariant(action: string): BadgeVariant {
-  const map: Record<string, BadgeVariant> = {
-    add: "success",
-    modify: "info",
-    remove: "danger",
-    move: "warning",
-  };
-  return map[action] ?? "neutral";
-}
 
 function riskVariant(severity: string): BadgeVariant {
   const map: Record<string, BadgeVariant> = {
@@ -79,119 +295,14 @@ function riskVariant(severity: string): BadgeVariant {
   return map[severity] ?? "neutral";
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-/**
- * Render the full blueprints page.
- */
-export function blueprintsPage(data: BlueprintsPageData): string {
-  const { projectId, projectName, blueprints, userName } = data;
-
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Blueprints</span>
-</div>`;
-
-  let content =
-    breadcrumb +
-    `<h1 class="page-title">Blueprints (${blueprints.length})</h1>`;
-
-  if (blueprints.length === 0) {
-    content += `<p style="color:#6b7280;">No blueprints yet. Run <code>prism blueprint</code> to generate redesign proposals.</p>`;
-  } else {
-    for (const bp of blueprints) {
-      const subsystemBadge = bp.subsystem
-        ? badge(bp.subsystem, "info")
-        : "";
-
-      const summaryHtml = bp.summary
-        ? `<p style="margin:8px 0;color:#374151;">${escapeHtml(bp.summary)}</p>`
-        : "";
-
-      const architectureHtml = bp.proposedArchitecture
-        ? `<div style="margin-top:12px;">
-            <strong>Proposed Architecture:</strong>
-            <p style="margin:4px 0;color:#4b5563;white-space:pre-wrap;font-size:0.875rem;">${escapeHtml(bp.proposedArchitecture)}</p>
-          </div>`
-        : "";
-
-      const changesHtml = `<div style="margin-top:12px;">
-        <strong>Module Changes:</strong>
-        ${renderModuleChanges(bp.moduleChanges)}
-      </div>`;
-
-      const migrationHtml = bp.migrationPath
-        ? `<div style="margin-top:12px;">
-            <strong>Migration Path:</strong>
-            <p style="margin:4px 0;color:#4b5563;white-space:pre-wrap;font-size:0.875rem;">${escapeHtml(bp.migrationPath)}</p>
-          </div>`
-        : "";
-
-      const risksHtml = `<div style="margin-top:12px;">
-        <strong>Risks:</strong>
-        ${renderRisks(bp.risks)}
-      </div>`;
-
-      const rationaleHtml = bp.rationale
-        ? `<div style="margin-top:12px;">
-            <strong>Rationale:</strong>
-            <p style="margin:4px 0;color:#4b5563;font-size:0.875rem;">${escapeHtml(bp.rationale)}</p>
-          </div>`
-        : "";
-
-      const costInfo = bp.costUsd
-        ? `<span style="float:right;font-size:0.75rem;color:#9ca3af;">Cost: $${escapeHtml(bp.costUsd)} | Model: ${escapeHtml(bp.model ?? "unknown")}</span>`
-        : "";
-
-      content += card(
-        `${escapeHtml(bp.title)} ${subsystemBadge} ${costInfo}`,
-        summaryHtml + architectureHtml + changesHtml + migrationHtml + risksHtml + rationaleHtml,
-      );
-    }
-  }
-
-  return layout({
-    title: `${projectName} — Blueprints`,
-    content,
-    userName,
-    activeNav: `project-${projectId}`,
-  });
+function statBox(label: string, value: string): string {
+  return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;text-align:center;">
+    <div style="font-size:1.25rem;font-weight:700;color:#111827;">${escapeHtml(value)}</div>
+    <div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">${escapeHtml(label)}</div>
+  </div>`;
 }
 
-/**
- * Render just the content fragment (for HTMX partial updates).
- */
-export function blueprintsFragment(data: BlueprintsPageData): string {
-  const { projectId, projectName, blueprints } = data;
-
-  let content = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Blueprints</span>
-</div>
-<h1 class="page-title">Blueprints (${blueprints.length})</h1>`;
-
-  if (blueprints.length === 0) {
-    content += `<p style="color:#6b7280;">No blueprints yet.</p>`;
-  } else {
-    for (const bp of blueprints) {
-      content += card(
-        escapeHtml(bp.title),
-        bp.summary ? `<p>${escapeHtml(bp.summary)}</p>` : "",
-      );
-    }
-  }
-
-  return content;
+function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen) + "...";
 }
