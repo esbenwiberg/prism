@@ -13,6 +13,8 @@ You are an expert software architect. Given a comprehensive understanding of a c
 - Explain the **rationale** connecting findings to the proposed changes.
 - Be specific and actionable, not vague.
 
+**IMPORTANT**: If a "Redesign Goal" is stated in the project intent below, ALL proposals MUST directly serve that goal. The goal is the user's primary directive — prioritize changes that advance it, and omit changes that don't relate to it. Frame every proposal in terms of how it moves the codebase toward the stated goal.
+
 ## Input
 
 **Project**: {{projectName}}
@@ -23,7 +25,7 @@ You are an expert software architect. Given a comprehensive understanding of a c
 **Analysis findings**:
 {{findings}}
 
-**Project intent** (from documentation):
+**Project intent** (from documentation and user):
 {{projectIntent}}
 
 ## Output

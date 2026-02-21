@@ -75,6 +75,14 @@ export function resetBlueprintTemplate(): void {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Options for steering blueprint generation. */
+export interface BlueprintOptions {
+  /** User-provided redesign goal (e.g. "Productionize this PoC"). */
+  goal?: string;
+  /** Focus on a specific subsystem path (e.g. "src/api"). */
+  focus?: string;
+}
+
 /**
  * Generate redesign blueprints for a project.
  *
@@ -82,6 +90,7 @@ export function resetBlueprintTemplate(): void {
  * @param projectName — The project name.
  * @param config      — Blueprint configuration.
  * @param budget      — Budget tracker.
+ * @param options     — Optional goal and focus to steer generation.
  * @returns Array of blueprint rows inserted.
  */
 export async function generateBlueprints(
@@ -89,13 +98,17 @@ export async function generateBlueprints(
   projectName: string,
   config: BlueprintConfig,
   budget: BudgetTracker,
+  options?: BlueprintOptions,
 ): Promise<BlueprintRow[]> {
   if (!config.enabled) {
     logger.info("Blueprint generation disabled");
     return [];
   }
 
-  logger.info({ projectId, projectName }, "Starting blueprint generation");
+  const goal = options?.goal;
+  const focus = options?.focus;
+
+  logger.info({ projectId, projectName, goal, focus }, "Starting blueprint generation");
 
   // Load all data
   const [systemSummaries, moduleSummaries, findings] = await Promise.all([
@@ -112,10 +125,41 @@ export async function generateBlueprints(
   }
 
   // Split into subsystems for focused proposals
-  const subsystems = splitBySubsystem(findings, moduleSummaries);
+  let subsystems = splitBySubsystem(findings, moduleSummaries);
 
-  // Build project intent from doc content (simplified)
-  const projectIntent = `Project: ${projectName}`;
+  // If --focus is set, filter subsystems to only those matching the focus path
+  if (focus) {
+    subsystems = subsystems.filter(
+      (g) =>
+        g.name === focus ||
+        g.name.startsWith(focus + "/") ||
+        focus.startsWith(g.name + "/"),
+    );
+    if (subsystems.length === 0) {
+      // No exact subsystem match — create a single group from all findings
+      // whose evidence references files under the focus path
+      const focusedFindings = findings.filter((f) => {
+        const evidence = f.evidence as Record<string, unknown> | null;
+        if (!evidence) return false;
+        const filePath =
+          (typeof evidence.filePath === "string" && evidence.filePath) ||
+          (typeof evidence.sourceFilePath === "string" && evidence.sourceFilePath) ||
+          (Array.isArray(evidence.filePaths) && typeof evidence.filePaths[0] === "string" && evidence.filePaths[0]);
+        return filePath ? filePath.startsWith(focus) : false;
+      });
+      const focusedSummaries = moduleSummaries.filter((s) => {
+        const path = s.targetId.replace(/^module:/, "");
+        return path === focus || path.startsWith(focus + "/");
+      });
+      if (focusedFindings.length > 0 || focusedSummaries.length > 0) {
+        subsystems = [{ name: focus, findings: focusedFindings, moduleSummaries: focusedSummaries }];
+      }
+    }
+    logger.info({ focus, subsystemCount: subsystems.length }, "Filtered subsystems by focus path");
+  }
+
+  // Build project intent — incorporate user goal if provided
+  const projectIntent = buildProjectIntent(projectName, goal);
 
   // Clear old blueprints
   await deleteBlueprintsByProjectId(projectId);
@@ -159,8 +203,8 @@ export async function generateBlueprints(
         projectId,
         projectName,
         systemSummary,
-        findings,
-        moduleSummaries,
+        focus ? subsystems.flatMap((g) => g.findings) : findings,
+        focus ? subsystems.flatMap((g) => g.moduleSummaries) : moduleSummaries,
         projectIntent,
         config,
         budget,
@@ -176,6 +220,27 @@ export async function generateBlueprints(
   );
 
   return allBlueprints;
+}
+
+/**
+ * Build the project intent string from the project name and optional user goal.
+ */
+function buildProjectIntent(projectName: string, goal?: string): string {
+  const parts: string[] = [`Project: ${projectName}`];
+
+  if (goal) {
+    parts.push("");
+    parts.push(`## Redesign Goal`);
+    parts.push(goal);
+    parts.push("");
+    parts.push(
+      "All proposals MUST directly serve the stated goal above. " +
+      "Prioritize changes that move the codebase toward this goal. " +
+      "Deprioritize or omit changes unrelated to the goal.",
+    );
+  }
+
+  return parts.join("\n");
 }
 
 // ---------------------------------------------------------------------------

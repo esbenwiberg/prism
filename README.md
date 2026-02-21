@@ -9,7 +9,7 @@ prism init ~/my-project
 prism index my-project --layer structural
 prism index my-project --layer semantic
 prism analyze my-project
-prism blueprint my-project
+prism blueprint my-project --goal "Productionize this PoC for enterprise deployment"
 prism serve
 ```
 
@@ -260,11 +260,26 @@ prism analyze my-app --full               # force full re-analysis
 
 ### `prism blueprint <project>`
 
-Generate Layer 5: subsystem-focused redesign proposals.
+Generate Layer 5: subsystem-focused redesign proposals. Use `--goal` to steer the
+proposals toward a specific outcome, and `--focus` to limit scope to a subsystem.
 
 ```bash
 prism blueprint my-app
+
+# Steer proposals with a goal
+prism blueprint my-app --goal "Productionize this PoC for enterprise deployment"
+prism blueprint my-app --goal "Migrate from Express to Fastify and replace Sequelize with Drizzle"
+prism blueprint my-app --goal "Improve testability and reduce coupling"
+
+# Focus on a specific subsystem
+prism blueprint my-app --focus src/api
+prism blueprint my-app --goal "Modernize the data layer" --focus src/db
 ```
+
+| Flag | Description |
+|------|-------------|
+| `-g, --goal <text>` | Redesign goal — all proposals will be aligned to this directive |
+| `-f, --focus <path>` | Limit blueprint scope to findings and modules under this path |
 
 ### `prism search <project> "query"`
 

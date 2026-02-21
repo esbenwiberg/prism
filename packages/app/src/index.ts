@@ -20,7 +20,7 @@ export {
   type GapFinding,
 } from "./blueprint/types.js";
 
-export { generateBlueprints, parseBlueprintProposals } from "./blueprint/generator.js";
+export { generateBlueprints, parseBlueprintProposals, type BlueprintOptions } from "./blueprint/generator.js";
 export { splitBySubsystem, type SubsystemGroup } from "./blueprint/splitter.js";
 
 // CLI is invoked directly via its entry point; no need to re-export here.

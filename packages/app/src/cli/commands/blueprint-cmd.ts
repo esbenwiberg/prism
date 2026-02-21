@@ -21,8 +21,10 @@ import { generateBlueprints } from "../../blueprint/generator.js";
 export const blueprintCommand = new Command("blueprint")
   .description("Generate redesign blueprints from analysis results")
   .argument("<project>", "Project ID (number) or path")
+  .option("-g, --goal <text>", "Redesign goal (e.g. 'Productionize this PoC for enterprise deployment')")
+  .option("-f, --focus <path>", "Focus on a specific subsystem path (e.g. 'src/api')")
   .action(
-    async (projectArg: string) => {
+    async (projectArg: string, opts: { goal?: string; focus?: string }) => {
       const config = initConfig();
 
       // Resolve project: by ID or by path
@@ -43,11 +45,18 @@ export const blueprintCommand = new Command("blueprint")
       }
 
       logger.info(
-        { projectId: project.id, projectName: project.name },
+        { projectId: project.id, projectName: project.name, goal: opts.goal, focus: opts.focus },
         "Starting blueprint generation",
       );
 
-      console.log(`\n  Generating blueprints for: ${project.name} (id: ${project.id})\n`);
+      console.log(`\n  Generating blueprints for: ${project.name} (id: ${project.id})`);
+      if (opts.goal) {
+        console.log(`  Goal: ${opts.goal}`);
+      }
+      if (opts.focus) {
+        console.log(`  Focus: ${opts.focus}`);
+      }
+      console.log();
 
       const budget = createBudgetTracker(config.blueprint.budgetUsd);
 
@@ -57,6 +66,7 @@ export const blueprintCommand = new Command("blueprint")
           project.name,
           config.blueprint,
           budget,
+          { goal: opts.goal, focus: opts.focus },
         );
 
         if (blueprints.length === 0) {
