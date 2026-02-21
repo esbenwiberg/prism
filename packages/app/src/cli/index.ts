@@ -16,6 +16,7 @@ import { serveCommand } from "./commands/serve.js";
 import { searchCommand } from "./commands/search.js";
 import { analyzeCommand } from "./commands/analyze.js";
 import { blueprintCommand } from "./commands/blueprint-cmd.js";
+import { workerCommand } from "./commands/worker.js";
 
 const program = new Command();
 
@@ -31,6 +32,7 @@ program.addCommand(serveCommand);
 program.addCommand(searchCommand);
 program.addCommand(analyzeCommand);
 program.addCommand(blueprintCommand);
+program.addCommand(workerCommand);
 
 // Parse and execute.
 program.parseAsync(process.argv).then(
