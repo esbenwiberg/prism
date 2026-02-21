@@ -2,69 +2,83 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Prism — Azure Deployment Wrapper
+# Prism — Deploy (build image + update container app)
+#
+# Builds the Docker image via ACR Tasks and updates the Container App.
+# Run this every time you want to ship a new version.
 #
 # Usage:
-#   ./deploy/deploy.sh [--resource-group rg-prism] [--location norwayeast]
+#   ./deploy/deploy.sh
+#   ./deploy/deploy.sh --tag v1.2.3
+#
+# Environment variables (all optional, with defaults):
+#   RESOURCE_GROUP   — default: rg-prism
+#   ACR_NAME         — auto-detected from deployment outputs if not set
+#   IMAGE_TAG        — default: latest
 #
 # Prerequisites:
 #   - Azure CLI (az) installed and logged in
-#   - deploy/parameters.json populated with real secret values
-#   - Docker image built (or let this script build via ACR)
+#   - Infrastructure already created via ./deploy/infra.sh
 # ---------------------------------------------------------------------------
 
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-prism}"
-LOCATION="${LOCATION:-norwayeast}"
-TEMPLATE_FILE="deploy/main.bicep"
-PARAMETERS_FILE="deploy/parameters.json"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-echo "=== Prism Azure Deployment ==="
+# Parse --tag flag
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tag) IMAGE_TAG="$2"; shift 2 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
+# Auto-detect ACR name from the deployment if not provided
+if [[ -z "${ACR_NAME:-}" ]]; then
+  echo "Detecting ACR from resource group $RESOURCE_GROUP..."
+  ACR_NAME=$(az acr list \
+    --resource-group "$RESOURCE_GROUP" \
+    --query "[0].name" \
+    --output tsv)
+  if [[ -z "$ACR_NAME" ]]; then
+    echo "Error: No ACR found in $RESOURCE_GROUP. Run ./deploy/infra.sh first."
+    exit 1
+  fi
+fi
+
+ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query "loginServer" --output tsv)
+FULL_IMAGE="$ACR_LOGIN_SERVER/prism:$IMAGE_TAG"
+
+echo "=== Prism — Deploy ==="
 echo "Resource Group: $RESOURCE_GROUP"
-echo "Location:       $LOCATION"
+echo "ACR:            $ACR_LOGIN_SERVER"
+echo "Image:          $FULL_IMAGE"
 echo ""
 
-# 1. Create resource group (idempotent)
-echo "Step 1: Creating resource group..."
-az group create \
-  --name "$RESOURCE_GROUP" \
-  --location "$LOCATION" \
-  --output none
-
-# 2. Deploy infrastructure via Bicep
-echo "Step 2: Deploying infrastructure (Bicep)..."
-DEPLOYMENT_OUTPUT=$(az deployment group create \
-  --resource-group "$RESOURCE_GROUP" \
-  --template-file "$TEMPLATE_FILE" \
-  --parameters "@$PARAMETERS_FILE" \
-  --output json)
-
-# Extract outputs
-ACR_LOGIN_SERVER=$(echo "$DEPLOYMENT_OUTPUT" | jq -r '.properties.outputs.acrLoginServer.value')
-APP_FQDN=$(echo "$DEPLOYMENT_OUTPUT" | jq -r '.properties.outputs.containerAppFqdn.value')
-
-echo "  ACR:  $ACR_LOGIN_SERVER"
-echo "  FQDN: $APP_FQDN"
-echo ""
-
-# 3. Build and push container image via ACR
-ACR_NAME=$(echo "$ACR_LOGIN_SERVER" | cut -d. -f1)
-IMAGE_TAG="$ACR_LOGIN_SERVER/prism:latest"
-
-echo "Step 3: Building and pushing container image..."
+# 1. Build and push container image via ACR Tasks
+echo "Step 1/2: Building and pushing container image..."
 az acr build \
   --registry "$ACR_NAME" \
-  --image "prism:latest" \
+  --image "prism:$IMAGE_TAG" \
   . \
   --output none
+echo "  Done."
 
-# 4. Update container app with the new image
-echo "Step 4: Updating container app with new image..."
+# 2. Update container app with the new image
+echo "Step 2/2: Updating container app..."
 az containerapp update \
   --name prism \
   --resource-group "$RESOURCE_GROUP" \
-  --image "$IMAGE_TAG" \
+  --image "$FULL_IMAGE" \
   --output none
 
+# Get the FQDN for confirmation
+APP_FQDN=$(az containerapp show \
+  --name prism \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "properties.configuration.ingress.fqdn" \
+  --output tsv)
+
 echo ""
-echo "=== Deployment complete ==="
-echo "Application URL: https://$APP_FQDN"
+echo "=== Deploy complete ==="
+echo "Image:   $FULL_IMAGE"
+echo "App URL: https://$APP_FQDN"
