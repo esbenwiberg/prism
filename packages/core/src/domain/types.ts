@@ -60,6 +60,15 @@ export type FindingSeverity =
 /** Granularity level for summaries. */
 export type SummaryLevel = "function" | "file" | "module" | "system";
 
+/** Status of a background job. */
+export type JobStatus = "pending" | "running" | "completed" | "failed";
+
+/** Type of background job. */
+export type JobType = "index" | "blueprint";
+
+/** Git hosting provider for credentials. */
+export type GitProvider = "github" | "azuredevops";
+
 // ---------------------------------------------------------------------------
 // Configuration interfaces
 // ---------------------------------------------------------------------------
@@ -125,6 +134,8 @@ export interface Project {
   indexStatus: IndexStatus;
   lastIndexedCommit: string | null;
   settings: Record<string, unknown> | null;
+  gitUrl: string | null;
+  credentialId: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

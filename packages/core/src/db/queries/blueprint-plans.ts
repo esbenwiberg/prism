@@ -1,0 +1,218 @@
+/**
+ * CRUD operations for hierarchical blueprint tables:
+ *   prism_blueprint_plans, prism_blueprint_phases, prism_blueprint_milestones.
+ */
+
+import { eq, asc } from "drizzle-orm";
+import { getDb } from "../connection.js";
+import { blueprintPlans, blueprintPhases, blueprintMilestones } from "../schema.js";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type BlueprintPlanRow = typeof blueprintPlans.$inferSelect;
+export type BlueprintPhaseRow = typeof blueprintPhases.$inferSelect;
+export type BlueprintMilestoneRow = typeof blueprintMilestones.$inferSelect;
+
+export interface InsertBlueprintPlanInput {
+  projectId: number;
+  title: string;
+  goal?: string | null;
+  summary: string;
+  nonGoals?: unknown;
+  acceptanceCriteria?: unknown;
+  risks?: unknown;
+  model?: string | null;
+  costUsd?: string | null;
+}
+
+export interface InsertBlueprintPhaseInput {
+  planId: number;
+  projectId: number;
+  phaseOrder: number;
+  title: string;
+  intent?: string | null;
+  milestoneCount?: number | null;
+  model?: string | null;
+  costUsd?: string | null;
+}
+
+export interface InsertBlueprintMilestoneInput {
+  phaseId: number;
+  projectId: number;
+  milestoneOrder: number;
+  title: string;
+  intent?: string | null;
+  keyFiles?: unknown;
+  verification?: string | null;
+  details?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Plans
+// ---------------------------------------------------------------------------
+
+/** Insert a master blueprint plan. */
+export async function insertBlueprintPlan(
+  input: InsertBlueprintPlanInput,
+): Promise<BlueprintPlanRow> {
+  const db = getDb();
+  const [row] = await db
+    .insert(blueprintPlans)
+    .values({
+      projectId: input.projectId,
+      title: input.title,
+      goal: input.goal ?? null,
+      summary: input.summary,
+      nonGoals: input.nonGoals ?? null,
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      risks: input.risks ?? null,
+      model: input.model ?? null,
+      costUsd: input.costUsd ?? null,
+    })
+    .returning();
+  return row;
+}
+
+/** Get all plans for a project, newest first. */
+export async function getBlueprintPlansByProjectId(
+  projectId: number,
+): Promise<BlueprintPlanRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(blueprintPlans)
+    .where(eq(blueprintPlans.projectId, projectId));
+}
+
+/** Get a single plan by ID. */
+export async function getBlueprintPlan(
+  id: number,
+): Promise<BlueprintPlanRow | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(blueprintPlans)
+    .where(eq(blueprintPlans.id, id));
+  return row;
+}
+
+/** Delete all plans (and cascading phases/milestones) for a project. */
+export async function deleteBlueprintPlansByProjectId(
+  projectId: number,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .delete(blueprintPlans)
+    .where(eq(blueprintPlans.projectId, projectId));
+}
+
+// ---------------------------------------------------------------------------
+// Phases
+// ---------------------------------------------------------------------------
+
+/** Insert a blueprint phase. */
+export async function insertBlueprintPhase(
+  input: InsertBlueprintPhaseInput,
+): Promise<BlueprintPhaseRow> {
+  const db = getDb();
+  const [row] = await db
+    .insert(blueprintPhases)
+    .values({
+      planId: input.planId,
+      projectId: input.projectId,
+      phaseOrder: input.phaseOrder,
+      title: input.title,
+      intent: input.intent ?? null,
+      milestoneCount: input.milestoneCount ?? null,
+      model: input.model ?? null,
+      costUsd: input.costUsd ?? null,
+    })
+    .returning();
+  return row;
+}
+
+/** Get all phases for a plan, ordered by phase_order. */
+export async function getBlueprintPhasesByPlanId(
+  planId: number,
+): Promise<BlueprintPhaseRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(blueprintPhases)
+    .where(eq(blueprintPhases.planId, planId))
+    .orderBy(asc(blueprintPhases.phaseOrder));
+}
+
+/** Get a single phase by ID. */
+export async function getBlueprintPhase(
+  id: number,
+): Promise<BlueprintPhaseRow | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(blueprintPhases)
+    .where(eq(blueprintPhases.id, id));
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Milestones
+// ---------------------------------------------------------------------------
+
+/** Insert a blueprint milestone. */
+export async function insertBlueprintMilestone(
+  input: InsertBlueprintMilestoneInput,
+): Promise<BlueprintMilestoneRow> {
+  const db = getDb();
+  const [row] = await db
+    .insert(blueprintMilestones)
+    .values({
+      phaseId: input.phaseId,
+      projectId: input.projectId,
+      milestoneOrder: input.milestoneOrder,
+      title: input.title,
+      intent: input.intent ?? null,
+      keyFiles: input.keyFiles ?? null,
+      verification: input.verification ?? null,
+      details: input.details ?? null,
+    })
+    .returning();
+  return row;
+}
+
+/** Bulk insert milestones for a phase. */
+export async function bulkInsertBlueprintMilestones(
+  inputs: InsertBlueprintMilestoneInput[],
+): Promise<BlueprintMilestoneRow[]> {
+  if (inputs.length === 0) return [];
+  const db = getDb();
+  return db
+    .insert(blueprintMilestones)
+    .values(
+      inputs.map((input) => ({
+        phaseId: input.phaseId,
+        projectId: input.projectId,
+        milestoneOrder: input.milestoneOrder,
+        title: input.title,
+        intent: input.intent ?? null,
+        keyFiles: input.keyFiles ?? null,
+        verification: input.verification ?? null,
+        details: input.details ?? null,
+      })),
+    )
+    .returning();
+}
+
+/** Get all milestones for a phase, ordered by milestone_order. */
+export async function getBlueprintMilestonesByPhaseId(
+  phaseId: number,
+): Promise<BlueprintMilestoneRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(blueprintMilestones)
+    .where(eq(blueprintMilestones.phaseId, phaseId))
+    .orderBy(asc(blueprintMilestones.milestoneOrder));
+}

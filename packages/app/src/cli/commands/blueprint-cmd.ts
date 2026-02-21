@@ -1,7 +1,7 @@
 /**
- * `prism blueprint <project>` command — run Layer 5 blueprint generation.
+ * `prism blueprint <project>` command — run Layer 5 hierarchical blueprint generation.
  *
- * Generates redesign proposals based on analysis results (Layer 4).
+ * Generates a phased redesign plan with milestones based on analysis results (Layer 4).
  * Requires that the project has been analysed first.
  */
 
@@ -10,16 +10,15 @@ import { Command } from "commander";
 import {
   logger,
   initConfig,
-  getConfig,
   getProject,
   getProjectByPath,
   createBudgetTracker,
 } from "@prism/core";
 
-import { generateBlueprints } from "../../blueprint/generator.js";
+import { generateHierarchicalBlueprint } from "../../blueprint/generator.js";
 
 export const blueprintCommand = new Command("blueprint")
-  .description("Generate redesign blueprints from analysis results")
+  .description("Generate a hierarchical redesign blueprint from analysis results")
   .argument("<project>", "Project ID (number) or path")
   .option("-g, --goal <text>", "Redesign goal (e.g. 'Productionize this PoC for enterprise deployment')")
   .option("-f, --focus <path>", "Focus on a specific subsystem path (e.g. 'src/api')")
@@ -49,7 +48,7 @@ export const blueprintCommand = new Command("blueprint")
         "Starting blueprint generation",
       );
 
-      console.log(`\n  Generating blueprints for: ${project.name} (id: ${project.id})`);
+      console.log(`\n  Generating hierarchical blueprint for: ${project.name} (id: ${project.id})`);
       if (opts.goal) {
         console.log(`  Goal: ${opts.goal}`);
       }
@@ -61,7 +60,7 @@ export const blueprintCommand = new Command("blueprint")
       const budget = createBudgetTracker(config.blueprint.budgetUsd);
 
       try {
-        const blueprints = await generateBlueprints(
+        const result = await generateHierarchicalBlueprint(
           project.id,
           project.name,
           config.blueprint,
@@ -69,28 +68,27 @@ export const blueprintCommand = new Command("blueprint")
           { goal: opts.goal, focus: opts.focus },
         );
 
-        if (blueprints.length === 0) {
+        if (!result) {
           console.log(
-            "  No blueprints generated. Ensure you have run 'prism analyze' first.\n",
+            "  No blueprint generated. Ensure you have run 'prism analyze' first.\n",
           );
           return;
         }
 
-        console.log(`  Generated ${blueprints.length} blueprint(s):\n`);
+        console.log(`  Blueprint: ${result.plan.title}`);
+        console.log(`  Phases: ${result.phases.length}\n`);
 
-        for (const bp of blueprints) {
-          console.log(`    - ${bp.title}`);
-          if (bp.subsystem) {
-            console.log(`      Subsystem: ${bp.subsystem}`);
+        for (const { phase, milestones } of result.phases) {
+          console.log(`    Phase ${phase.phaseOrder}: ${phase.title} (${milestones.length} milestones)`);
+          for (const ms of milestones) {
+            console.log(`      ${ms.milestoneOrder}. ${ms.title}`);
           }
-          if (bp.summary) {
-            console.log(`      ${bp.summary}`);
-          }
+          console.log();
         }
 
-        console.log(
-          `\n  Total cost: $${budget.spentUsd.toFixed(4)}`,
-        );
+        const totalMilestones = result.phases.reduce((n, p) => n + p.milestones.length, 0);
+        console.log(`  Total milestones: ${totalMilestones}`);
+        console.log(`  Total cost: $${budget.spentUsd.toFixed(4)}`);
         console.log(
           "\n  View full details in the dashboard: prism serve\n",
         );

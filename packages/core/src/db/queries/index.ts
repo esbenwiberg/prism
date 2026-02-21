@@ -96,3 +96,43 @@ export {
   type InsertBlueprintInput,
   type BlueprintRow,
 } from "./blueprints.js";
+
+export {
+  insertBlueprintPlan,
+  getBlueprintPlansByProjectId,
+  getBlueprintPlan,
+  deleteBlueprintPlansByProjectId,
+  insertBlueprintPhase,
+  getBlueprintPhasesByPlanId,
+  getBlueprintPhase,
+  insertBlueprintMilestone,
+  bulkInsertBlueprintMilestones,
+  getBlueprintMilestonesByPhaseId,
+  type BlueprintPlanRow,
+  type BlueprintPhaseRow,
+  type BlueprintMilestoneRow,
+  type InsertBlueprintPlanInput,
+  type InsertBlueprintPhaseInput,
+  type InsertBlueprintMilestoneInput,
+} from "./blueprint-plans.js";
+
+export {
+  createCredential,
+  getCredential,
+  listCredentials,
+  updateCredential,
+  deleteCredential,
+  type CredentialRow,
+  type CreateCredentialInput,
+} from "./credentials.js";
+
+export {
+  createJob,
+  claimNextJob,
+  completeJob,
+  failJob,
+  getJobsByProjectId,
+  getPendingJobCount,
+  type JobRow,
+  type JobOptions,
+} from "./jobs.js";

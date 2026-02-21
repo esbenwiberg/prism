@@ -25,6 +25,8 @@ function toProject(row: typeof projects.$inferSelect): Project {
     indexStatus: row.indexStatus as IndexStatus,
     lastIndexedCommit: row.lastIndexedCommit,
     settings: row.settings as Record<string, unknown> | null,
+    gitUrl: row.gitUrl,
+    credentialId: row.credentialId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -104,6 +106,8 @@ export async function updateProject(
       | "indexStatus"
       | "lastIndexedCommit"
       | "settings"
+      | "gitUrl"
+      | "credentialId"
     >
   >,
 ): Promise<Project | undefined> {

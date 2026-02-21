@@ -19,6 +19,18 @@ import {
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
+// prism_credentials
+// ---------------------------------------------------------------------------
+export const credentials = pgTable("prism_credentials", {
+  id: serial("id").primaryKey(),
+  label: text("label").notNull(),
+  provider: text("provider").notNull(),
+  encryptedToken: text("encrypted_token").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // prism_projects
 // ---------------------------------------------------------------------------
 export const projects = pgTable("prism_projects", {
@@ -31,6 +43,10 @@ export const projects = pgTable("prism_projects", {
   indexStatus: text("index_status").notNull().default("pending"),
   lastIndexedCommit: text("last_indexed_commit"),
   settings: jsonb("settings"),
+  gitUrl: text("git_url"),
+  credentialId: integer("credential_id").references(() => credentials.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -166,7 +182,7 @@ export const findings = pgTable("prism_findings", {
 });
 
 // ---------------------------------------------------------------------------
-// prism_blueprints
+// prism_blueprints (legacy — to be removed after migration to hierarchical)
 // ---------------------------------------------------------------------------
 export const blueprints = pgTable("prism_blueprints", {
   id: serial("id").primaryKey(),
@@ -183,6 +199,65 @@ export const blueprints = pgTable("prism_blueprints", {
   rationale: text("rationale"),
   model: text("model"),
   costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+});
+
+// ---------------------------------------------------------------------------
+// prism_blueprint_plans (master blueprint)
+// ---------------------------------------------------------------------------
+export const blueprintPlans = pgTable("prism_blueprint_plans", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  goal: text("goal"),
+  summary: text("summary").notNull(),
+  nonGoals: jsonb("non_goals"),
+  acceptanceCriteria: jsonb("acceptance_criteria"),
+  risks: jsonb("risks"),
+  model: text("model"),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// prism_blueprint_phases (one per phase)
+// ---------------------------------------------------------------------------
+export const blueprintPhases = pgTable("prism_blueprint_phases", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id")
+    .notNull()
+    .references(() => blueprintPlans.id, { onDelete: "cascade" }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  phaseOrder: integer("phase_order").notNull(),
+  title: text("title").notNull(),
+  intent: text("intent"),
+  milestoneCount: integer("milestone_count"),
+  model: text("model"),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// prism_blueprint_milestones (N per phase)
+// ---------------------------------------------------------------------------
+export const blueprintMilestones = pgTable("prism_blueprint_milestones", {
+  id: serial("id").primaryKey(),
+  phaseId: integer("phase_id")
+    .notNull()
+    .references(() => blueprintPhases.id, { onDelete: "cascade" }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  milestoneOrder: integer("milestone_order").notNull(),
+  title: text("title").notNull(),
+  intent: text("intent"),
+  keyFiles: jsonb("key_files"),
+  verification: text("verification"),
+  details: text("details"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------------------------------------------------------------------------
@@ -203,4 +278,21 @@ export const indexRuns = pgTable("prism_index_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// prism_jobs
+// ---------------------------------------------------------------------------
+export const jobs = pgTable("prism_jobs", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("pending"),
+  options: jsonb("options"),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });
