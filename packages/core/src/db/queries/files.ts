@@ -164,3 +164,18 @@ export async function bulkUpsertFiles(
   }
   return results;
 }
+
+/**
+ * Update the doc_content column for a file identified by project ID and path.
+ */
+export async function updateFileDocContent(
+  projectId: number,
+  path: string,
+  docContent: string | null,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(files)
+    .set({ docContent })
+    .where(and(eq(files.projectId, projectId), eq(files.path, path)));
+}

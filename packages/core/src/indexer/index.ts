@@ -1,7 +1,7 @@
 /**
  * Indexer module barrel export.
  *
- * Re-exports the pipeline orchestrator, types, and structural sub-modules.
+ * Re-exports the pipeline orchestrator, types, and structural/docs sub-modules.
  */
 
 // Pipeline
@@ -44,3 +44,43 @@ export {
   computeFunctionComplexity,
   computeFileMetrics,
 } from "./structural/metrics.js";
+
+// Docs sub-modules
+export {
+  isDocumentationFile,
+  parseReadme,
+  parseDocFiles,
+  parseMarkdownSections,
+  type DocSection,
+  type ReadmeParseResult,
+} from "./docs/readme.js";
+
+export {
+  extractComments,
+  extractCommentsFromFiles,
+  extractJSComments,
+  extractPythonComments,
+  extractCSharpComments,
+  type CommentKind,
+  type ExtractedComment,
+  type FileCommentsResult,
+} from "./docs/comments.js";
+
+export {
+  isConfigurationFile,
+  classifyConfigFile,
+  parseConfigFiles,
+  buildTechStack,
+  buildConfigDocContent,
+  type ConfigCategory,
+  type ConfigInfo,
+  type TechStackInfo,
+} from "./docs/config.js";
+
+export {
+  assembleIntent,
+  buildIntentDocContent,
+  type ProjectIntent,
+  type TechStackSummary,
+  type ModuleIntent,
+} from "./docs/intent.js";

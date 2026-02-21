@@ -18,6 +18,7 @@ export {
   getProjectFiles,
   deleteFilesByPaths,
   bulkUpsertFiles,
+  updateFileDocContent,
   type UpsertFileInput,
   type FileRow,
 } from "./files.js";
