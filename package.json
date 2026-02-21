@@ -1,0 +1,24 @@
+{
+  "name": "prism",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codebase Analysis & Redesign Tool",
+  "workspaces": [
+    "packages/core",
+    "packages/app"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --build --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.11",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,38 @@
+structural:
+  skipPatterns:
+    - "node_modules/**"
+    - ".git/**"
+    - "dist/**"
+    - "build/**"
+    - "vendor/**"
+    - "*.min.js"
+    - "*.min.css"
+    - "*.lock"
+    - "*.map"
+  maxFileSizeBytes: 1048576  # 1MB
+
+semantic:
+  enabled: true
+  model: "claude-haiku-4-5-20251001"
+  embeddingProvider: "voyage"
+  embeddingModel: "voyage-code-3"
+  embeddingDimensions: 1536
+  budgetUsd: 10.0
+
+analysis:
+  enabled: true
+  model: "claude-sonnet-4-6-20250514"
+  budgetUsd: 5.0
+
+blueprint:
+  enabled: true
+  model: "claude-sonnet-4-6-20250514"
+  budgetUsd: 5.0
+
+indexer:
+  batchSize: 100
+  maxConcurrentBatches: 4
+  incrementalByDefault: true
+
+dashboard:
+  port: 3100
