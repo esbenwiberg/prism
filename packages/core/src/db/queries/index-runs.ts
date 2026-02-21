@@ -125,3 +125,17 @@ export async function getLatestIndexRun(
   const layerRuns = rows.filter((r) => r.layer === layer);
   return layerRuns.length > 0 ? layerRuns[layerRuns.length - 1] : undefined;
 }
+
+/**
+ * Get all index runs for a project, ordered by creation time.
+ */
+export async function getIndexRunsByProjectId(
+  projectId: number,
+): Promise<IndexRunRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(indexRuns)
+    .where(eq(indexRuns.projectId, projectId))
+    .orderBy(indexRuns.createdAt);
+}

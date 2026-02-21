@@ -49,6 +49,7 @@ export {
   completeIndexRun,
   failIndexRun,
   getLatestIndexRun,
+  getIndexRunsByProjectId,
   type IndexRunRow,
 } from "./index-runs.js";
 
