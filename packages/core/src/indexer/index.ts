@@ -84,3 +84,15 @@ export {
   type TechStackSummary,
   type ModuleIntent,
 } from "./docs/intent.js";
+
+// Analysis detectors
+export {
+  findSCCs,
+  buildAdjacencyList,
+  detectCircularDeps,
+  detectDeadCode,
+  type DepEdge,
+  type DetectorFinding,
+  type SymbolInfo,
+  type SymbolReference,
+} from "./analysis/detectors/index.js";

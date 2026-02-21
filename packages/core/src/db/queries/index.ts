@@ -51,3 +51,13 @@ export {
   getLatestIndexRun,
   type IndexRunRow,
 } from "./index-runs.js";
+
+export {
+  bulkInsertFindings,
+  getFindingsByProjectId,
+  getFindingsByProjectIdAndSeverity,
+  deleteFindingsByProjectId,
+  countFindingsByProjectId,
+  type InsertFindingInput,
+  type FindingRow,
+} from "./findings.js";

@@ -1,11 +1,10 @@
 /**
  * `prism serve` command — start the HTMX dashboard.
- *
- * This is a stub that will be implemented in a later milestone.
  */
 
 import { Command } from "commander";
-import { logger, initConfig, getConfig } from "@prism/core";
+import { logger, initConfig } from "@prism/core";
+import { startServer } from "../../dashboard/server.js";
 
 export const serveCommand = new Command("serve")
   .description("Start the Prism dashboard (Express + HTMX)")
@@ -14,10 +13,6 @@ export const serveCommand = new Command("serve")
     const config = initConfig();
     const port = opts.port ? parseInt(opts.port, 10) : config.dashboard.port;
 
-    logger.info({ port }, "Starting dashboard (stub)");
-
-    // TODO: Implement Express + HTMX dashboard in a later milestone.
-    console.log(
-      `Dashboard not yet implemented. Would listen on port ${port}.`,
-    );
+    logger.info({ port }, "Starting dashboard");
+    startServer(port);
   });
