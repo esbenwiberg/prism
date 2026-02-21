@@ -29,3 +29,9 @@ export {
   type FindingViewData,
   type FindingsPageData,
 } from "./findings.js";
+export {
+  searchPage,
+  searchFragment,
+  type SearchResultViewData,
+  type SearchPageData,
+} from "./search.js";

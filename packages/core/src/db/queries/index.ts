@@ -61,3 +61,25 @@ export {
   type InsertFindingInput,
   type FindingRow,
 } from "./findings.js";
+
+export {
+  insertSummary,
+  bulkInsertSummaries,
+  getSummaryByTargetId,
+  getSummariesByProjectId,
+  deleteSummariesByProjectId,
+  getExistingInputHashes,
+  type InsertSummaryInput,
+  type SummaryRow,
+} from "./summaries.js";
+
+export {
+  insertEmbedding,
+  bulkInsertEmbeddings,
+  deleteEmbeddingsByProjectId,
+  similaritySearch,
+  simpleSimilaritySearch,
+  type InsertEmbeddingInput,
+  type EmbeddingRow,
+  type SimilaritySearchResult,
+} from "./embeddings.js";

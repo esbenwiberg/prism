@@ -10,6 +10,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "drizzle-orm": "^0.38.4",
     "js-yaml": "^4.1.1",
     "pg": "^8.18.0",

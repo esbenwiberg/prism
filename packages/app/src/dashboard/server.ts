@@ -15,6 +15,7 @@ import { overviewRouter } from "./routes/overview.js";
 import { projectRouter } from "./routes/project.js";
 import { filesRouter } from "./routes/files.js";
 import { findingsRouter } from "./routes/findings.js";
+import { searchRouter } from "./routes/search.js";
 
 /**
  * Create and configure the Express application.
@@ -90,6 +91,7 @@ export function createApp(): express.Express {
   app.use(projectRouter);
   app.use(filesRouter);
   app.use(findingsRouter);
+  app.use(searchRouter);
 
   return app;
 }

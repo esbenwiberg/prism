@@ -96,3 +96,31 @@ export {
   type SymbolInfo,
   type SymbolReference,
 } from "./analysis/detectors/index.js";
+
+// Semantic sub-modules
+export {
+  estimateTokens,
+  extractSymbolSource,
+  buildFileContext,
+  chunkFileSymbols,
+  filterSummarisableSymbols,
+  type SourceChunk,
+} from "./semantic/chunker.js";
+
+export {
+  buildPrompt,
+  computeInputHash,
+  computeCost,
+  summariseBatch,
+  loadPromptTemplate,
+  resetPromptTemplate,
+  type SummariseInput,
+  type SummaryResult,
+} from "./semantic/summarizer.js";
+
+export {
+  createEmbedder,
+  VoyageProvider,
+  OpenAIProvider,
+  type EmbeddingProvider,
+} from "./semantic/embedder.js";

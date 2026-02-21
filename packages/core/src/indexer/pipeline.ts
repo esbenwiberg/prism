@@ -53,6 +53,18 @@ import { extractCommentsFromFiles } from "./docs/comments.js";
 import { parseConfigFiles, buildTechStack, buildConfigDocContent } from "./docs/config.js";
 import { assembleIntent, buildIntentDocContent } from "./docs/intent.js";
 
+// Semantic layer imports
+import {
+  getSymbolsByProjectId,
+  getProjectFiles,
+  getExistingInputHashes,
+  bulkInsertSummaries,
+  bulkInsertEmbeddings,
+} from "../db/queries/index.js";
+import { chunkFileSymbols, filterSummarisableSymbols } from "./semantic/chunker.js";
+import { summariseBatch, type SummariseInput } from "./semantic/summarizer.js";
+import { createEmbedder } from "./semantic/embedder.js";
+
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -492,8 +504,11 @@ export async function runPipeline(
           result = await executeDocsLayer(context);
           break;
 
-        // Other layers are not yet implemented — mark as pending
         case "semantic":
+          result = await executeSemanticLayer(context);
+          break;
+
+        // Other layers are not yet implemented — mark as pending
         case "analysis":
         case "blueprint":
           logger.info({ layer }, "Layer not yet implemented, skipping");
@@ -842,6 +857,218 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
       filesTotal: totalFiles,
       durationMs,
       costUsd: 0,
+    };
+  } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
+
+    await failIndexRun(
+      indexRun.id,
+      errorMessage,
+      0,
+      Date.now() - startTime,
+    );
+
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Semantic layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute the semantic layer.
+ *
+ * For each function/class symbol in the project:
+ * 1. Build a summarisation prompt
+ * 2. Call Claude Haiku to generate a summary
+ * 3. Embed the summary using the configured embedding provider
+ * 4. Store summaries and embeddings in the database
+ *
+ * Respects budget limits and uses input hashing for incrementality.
+ */
+async function executeSemanticLayer(context: IndexContext): Promise<LayerResult> {
+  const { project, config, budget } = context;
+  const startTime = Date.now();
+
+  if (!config.semantic.enabled) {
+    logger.info({ projectId: project.id }, "Semantic layer disabled, skipping");
+    return {
+      layer: "semantic",
+      status: "completed",
+      filesProcessed: 0,
+      filesTotal: 0,
+      durationMs: Date.now() - startTime,
+      costUsd: 0,
+    };
+  }
+
+  logger.info({ projectId: project.id }, "Starting semantic layer");
+
+  // Get all symbols and files for the project
+  const projectSymbols = await getSymbolsByProjectId(project.id);
+  const projectFiles = await getProjectFiles(project.id);
+
+  // Build a file map: fileId -> { path, content }
+  // Note: we'll need to re-read file content from disk since DB doesn't store it
+  const filePathMap = new Map<number, string>();
+  for (const f of projectFiles) {
+    filePathMap.set(f.id, f.path);
+  }
+
+  // Group symbols by file
+  const symbolsByFile = new Map<number, typeof projectSymbols>();
+  for (const sym of projectSymbols) {
+    const existing = symbolsByFile.get(sym.fileId) ?? [];
+    existing.push(sym);
+    symbolsByFile.set(sym.fileId, existing);
+  }
+
+  // Get existing input hashes for staleness detection
+  const existingHashes = await getExistingInputHashes(project.id);
+
+  // Collect all summarisation inputs
+  const summariseInputs: SummariseInput[] = [];
+  let totalSymbols = 0;
+
+  for (const [fileId, fileSymbols] of symbolsByFile) {
+    const filePath = filePathMap.get(fileId);
+    if (!filePath) continue;
+
+    // Read file content from disk
+    const absPath = resolve(project.path, filePath);
+    let fileContent: string;
+    try {
+      fileContent = await readFile(absPath, "utf-8");
+    } catch {
+      logger.debug({ filePath }, "Could not read file for semantic layer, skipping");
+      continue;
+    }
+
+    // Detect language
+    const language = detectLanguage(filePath);
+    if (!language) continue;
+
+    // Filter to summarisable symbols
+    const eligible = filterSummarisableSymbols(
+      fileSymbols.map((s) => ({
+        kind: s.kind as import("../domain/types.js").SymbolKind,
+        name: s.name,
+        startLine: s.startLine ?? 1,
+        endLine: s.endLine ?? 1,
+        exported: s.exported,
+        signature: s.signature,
+        docstring: s.docstring,
+        complexity: s.complexity ? Number(s.complexity) : null,
+      })),
+    );
+
+    for (const sym of eligible) {
+      summariseInputs.push({
+        filePath,
+        language,
+        fileContent,
+        symbol: sym,
+        allSymbols: eligible,
+      });
+      totalSymbols++;
+    }
+  }
+
+  logger.info(
+    { totalSymbols, projectId: project.id },
+    "Symbols collected for summarisation",
+  );
+
+  // Create index run
+  const indexRun = await createIndexRun(project.id, "semantic", totalSymbols);
+
+  try {
+    // Process in batches
+    const batchSize = config.indexer.batchSize;
+    let symbolsProcessed = 0;
+    let totalCostUsd = 0;
+
+    for (let i = 0; i < summariseInputs.length; i += batchSize) {
+      if (budget.exceeded) {
+        logger.warn("Budget exceeded, stopping semantic layer");
+        break;
+      }
+
+      const batch = summariseInputs.slice(i, i + batchSize);
+
+      // Summarise batch
+      const summaryResults = await summariseBatch(
+        batch,
+        config.semantic,
+        budget,
+        existingHashes,
+      );
+
+      // Store summaries in DB
+      if (summaryResults.length > 0) {
+        const summaryRows = await bulkInsertSummaries(
+          summaryResults.map((s) => ({
+            projectId: project.id,
+            level: "function" as const,
+            targetId: s.targetId,
+            content: s.content,
+            model: s.model,
+            inputHash: s.inputHash,
+            costUsd: s.costUsd.toFixed(4),
+          })),
+        );
+
+        // Embed the summaries
+        try {
+          const embedder = createEmbedder(config.semantic);
+          const textsToEmbed = summaryResults.map((s) => s.content);
+          const vectors = await embedder.embed(textsToEmbed);
+
+          // Store embeddings
+          await bulkInsertEmbeddings(
+            summaryRows.map((row, idx) => ({
+              projectId: project.id,
+              summaryId: row.id,
+              embedding: vectors[idx],
+              model: config.semantic.embeddingModel,
+            })),
+          );
+        } catch (embedErr) {
+          logger.warn(
+            { error: embedErr instanceof Error ? embedErr.message : String(embedErr) },
+            "Failed to embed summaries — summaries stored but embeddings skipped",
+          );
+        }
+
+        totalCostUsd += summaryResults.reduce((sum, s) => sum + s.costUsd, 0);
+      }
+
+      symbolsProcessed += batch.length;
+      await updateIndexRunProgress(indexRun.id, symbolsProcessed);
+    }
+
+    const durationMs = Date.now() - startTime;
+    await completeIndexRun(indexRun.id, symbolsProcessed, durationMs, totalCostUsd);
+
+    logger.info(
+      {
+        symbolsProcessed,
+        totalSymbols,
+        costUsd: totalCostUsd.toFixed(4),
+        durationMs,
+      },
+      "Semantic layer complete",
+    );
+
+    return {
+      layer: "semantic",
+      status: "completed",
+      filesProcessed: symbolsProcessed,
+      filesTotal: totalSymbols,
+      durationMs,
+      costUsd: totalCostUsd,
     };
   } catch (err) {
     const errorMessage =
