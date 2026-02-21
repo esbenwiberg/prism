@@ -5,12 +5,16 @@
   "description": "Prism CLI, dashboard, and blueprint generator",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "prism": "dist/cli/index.js"
+  },
   "scripts": {
     "build": "tsc --build",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@prism/core": "*"
+    "@prism/core": "*",
+    "commander": "^14.0.3"
   },
   "engines": {
     "node": ">=22"

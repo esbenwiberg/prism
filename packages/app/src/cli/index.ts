@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+
+/**
+ * Prism CLI — entry point.
+ *
+ * Registers all sub-commands and parses argv.
+ */
+
+import { Command } from "commander";
+import { closeDb } from "@prism/core";
+
+import { initCommand } from "./commands/init.js";
+import { indexCommand } from "./commands/index-cmd.js";
+import { statusCommand } from "./commands/status.js";
+import { serveCommand } from "./commands/serve.js";
+
+const program = new Command();
+
+program
+  .name("prism")
+  .description("Prism — Codebase Analysis & Redesign Tool")
+  .version("0.1.0");
+
+program.addCommand(initCommand);
+program.addCommand(indexCommand);
+program.addCommand(statusCommand);
+program.addCommand(serveCommand);
+
+// Parse and execute.
+program.parseAsync(process.argv).then(
+  async () => {
+    await closeDb();
+  },
+  async (err: unknown) => {
+    console.error(err);
+    await closeDb();
+    process.exitCode = 1;
+  },
+);

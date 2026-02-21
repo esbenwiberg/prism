@@ -6,3 +6,6 @@
  */
 
 export { logger } from "@prism/core";
+
+// CLI is invoked directly via its entry point; no need to re-export here.
+// The cli/index.ts file is the bin entry.
