@@ -130,7 +130,10 @@ export function layout(options: LayoutOptions): string {
     content,
     userName = "User",
     activeNav = "",
-    navItems = [{ label: "Overview", href: "/", key: "overview" }],
+    navItems = [
+      { label: "Overview", href: "/", key: "overview" },
+      { label: "Credentials", href: "/credentials", key: "credentials" },
+    ],
   } = options;
 
   const navHtml = navItems

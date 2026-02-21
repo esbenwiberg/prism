@@ -19,6 +19,7 @@ import { searchRouter } from "./routes/search.js";
 import { blueprintsRouter } from "./routes/blueprints.js";
 import { graphRouter } from "./routes/graph.js";
 import { modulesRouter } from "./routes/modules.js";
+import { credentialsRouter } from "./routes/credentials.js";
 
 /**
  * Create and configure the Express application.
@@ -32,6 +33,9 @@ export function createApp(): express.Express {
 
   // Session
   app.use(createSessionMiddleware());
+
+  // Body parsing for HTML form submissions (POST)
+  app.use(express.urlencoded({ extended: false }));
 
   // Static files (htmx-ext.js etc.)
   // __dirname is available in CJS output; points to the compiled dist directory.
@@ -98,6 +102,7 @@ export function createApp(): express.Express {
   app.use(blueprintsRouter);
   app.use(graphRouter);
   app.use(modulesRouter);
+  app.use(credentialsRouter);
 
   return app;
 }

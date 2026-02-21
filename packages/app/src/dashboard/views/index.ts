@@ -61,3 +61,9 @@ export {
   type ModuleViewData,
   type ModulesPageData,
 } from "./modules.js";
+
+export {
+  credentialsPage,
+  credentialsFragment,
+  type CredentialsPageData,
+} from "./credentials.js";
