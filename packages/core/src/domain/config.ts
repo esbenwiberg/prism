@@ -40,7 +40,7 @@ const DEFAULT_CONFIG: PrismConfig = {
     model: "claude-haiku-4-5-20251001",
     embeddingProvider: "voyage",
     embeddingModel: "voyage-code-3",
-    embeddingDimensions: 1536,
+    embeddingDimensions: 3072,
     budgetUsd: 10.0,
   },
   analysis: {

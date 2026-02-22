@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 @description('Azure region for all resources')
-param location string = resourceGroup().location
+param location string = 'swedencentral'
 
 @description('Base name used for resource naming')
 param baseName string = 'prism'
@@ -24,9 +24,9 @@ param pgAdminLogin string = 'prismadmin'
 @secure()
 param pgAdminPassword string
 
-@description('Database URL (stored in Key Vault)')
+@description('Database URL (stored in Key Vault; set after first deploy)')
 @secure()
-param databaseUrl string
+param databaseUrl string = ''
 
 @description('Anthropic API key')
 @secure()
@@ -48,6 +48,13 @@ param voyageApiKey string = ''
 @secure()
 param openaiApiKey string = ''
 
+@description('Azure OpenAI API key (optional)')
+@secure()
+param azureOpenaiApiKey string = ''
+
+@description('Azure OpenAI endpoint (optional, e.g. https://myresource.openai.azure.com)')
+param azureOpenaiEndpoint string = ''
+
 @description('Azure Entra ID tenant ID')
 @secure()
 param azureTenantId string = ''
@@ -62,6 +69,12 @@ param azureClientSecret string = ''
 
 @description('Container image (e.g. myacr.azurecr.io/prism:latest)')
 param containerImage string = ''
+
+@description('Use RBAC for Key Vault access (requires roleAssignments/write). Set false to use access policies.')
+param useRbac bool = true
+
+@description('Object ID of the deploying user (needed for Key Vault access policies when useRbac=false)')
+param deployerObjectId string = ''
 
 // ---------------------------------------------------------------------------
 // Variables
@@ -178,9 +191,35 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       name: 'standard'
     }
     tenantId: subscription().tenantId
-    enableRbacAuthorization: true
+    enableRbacAuthorization: useRbac
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
+    accessPolicies: (!useRbac && deployerObjectId != '') ? [
+      {
+        tenantId: subscription().tenantId
+        objectId: deployerObjectId
+        permissions: {
+          secrets: ['get', 'list', 'set', 'delete']
+        }
+      }
+    ] : []
+  }
+}
+
+// Access policy for Container App's managed identity (when not using RBAC)
+resource kvAccessPolicy 'Microsoft.KeyVault/vaults/accessPolicies@2023-07-01' = if (!useRbac) {
+  parent: keyVault
+  name: 'add'
+  properties: {
+    accessPolicies: [
+      {
+        tenantId: subscription().tenantId
+        objectId: containerApp.identity.principalId
+        permissions: {
+          secrets: ['get', 'list']
+        }
+      }
+    ]
   }
 }
 
@@ -209,31 +248,37 @@ resource secretSessionSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   properties: { value: sessionSecret }
 }
 
-resource secretVoyageApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretVoyageApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (voyageApiKey != '') {
   parent: keyVault
   name: 'VOYAGE-API-KEY'
   properties: { value: voyageApiKey }
 }
 
-resource secretOpenaiApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretOpenaiApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (openaiApiKey != '') {
   parent: keyVault
   name: 'OPENAI-API-KEY'
   properties: { value: openaiApiKey }
 }
 
-resource secretAzureTenantId 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretAzureOpenaiApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (azureOpenaiApiKey != '') {
+  parent: keyVault
+  name: 'AZURE-OPENAI-API-KEY'
+  properties: { value: azureOpenaiApiKey }
+}
+
+resource secretAzureTenantId 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (azureTenantId != '') {
   parent: keyVault
   name: 'AZURE-TENANT-ID'
   properties: { value: azureTenantId }
 }
 
-resource secretAzureClientId 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretAzureClientId 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (azureClientId != '') {
   parent: keyVault
   name: 'AZURE-CLIENT-ID'
   properties: { value: azureClientId }
 }
 
-resource secretAzureClientSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretAzureClientSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (azureClientSecret != '') {
   parent: keyVault
   name: 'AZURE-CLIENT-SECRET'
   properties: { value: azureClientSecret }
@@ -282,57 +327,40 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           passwordSecretRef: 'acr-password'
         }
       ]
-      secrets: [
-        {
-          name: 'acr-password'
-          value: acr.listCredentials().passwords[0].value
-        }
-        {
-          name: 'database-url'
-          keyVaultUrl: secretDatabaseUrl.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'anthropic-api-key'
-          keyVaultUrl: secretAnthropicApiKey.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'credential-encryption-key'
-          keyVaultUrl: secretCredentialEncryptionKey.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'session-secret'
-          keyVaultUrl: secretSessionSecret.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'voyage-api-key'
-          keyVaultUrl: secretVoyageApiKey.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'openai-api-key'
-          keyVaultUrl: secretOpenaiApiKey.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'azure-tenant-id'
-          keyVaultUrl: secretAzureTenantId.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'azure-client-id'
-          keyVaultUrl: secretAzureClientId.properties.secretUri
-          identity: 'system'
-        }
-        {
-          name: 'azure-client-secret'
-          keyVaultUrl: secretAzureClientSecret.properties.secretUri
-          identity: 'system'
-        }
-      ]
+      secrets: concat(
+        [
+          {
+            name: 'acr-password'
+            value: acr.listCredentials().passwords[0].value
+          }
+          {
+            name: 'database-url'
+            keyVaultUrl: secretDatabaseUrl.properties.secretUri
+            identity: 'system'
+          }
+          {
+            name: 'anthropic-api-key'
+            keyVaultUrl: secretAnthropicApiKey.properties.secretUri
+            identity: 'system'
+          }
+          {
+            name: 'credential-encryption-key'
+            keyVaultUrl: secretCredentialEncryptionKey.properties.secretUri
+            identity: 'system'
+          }
+          {
+            name: 'session-secret'
+            keyVaultUrl: secretSessionSecret.properties.secretUri
+            identity: 'system'
+          }
+        ]
+        voyageApiKey != '' ? [{ name: 'voyage-api-key', keyVaultUrl: secretVoyageApiKey.properties.secretUri, identity: 'system' }] : []
+        openaiApiKey != '' ? [{ name: 'openai-api-key', keyVaultUrl: secretOpenaiApiKey.properties.secretUri, identity: 'system' }] : []
+        azureOpenaiApiKey != '' ? [{ name: 'azure-openai-api-key', keyVaultUrl: secretAzureOpenaiApiKey.properties.secretUri, identity: 'system' }] : []
+        azureTenantId != '' ? [{ name: 'azure-tenant-id', keyVaultUrl: secretAzureTenantId.properties.secretUri, identity: 'system' }] : []
+        azureClientId != '' ? [{ name: 'azure-client-id', keyVaultUrl: secretAzureClientId.properties.secretUri, identity: 'system' }] : []
+        azureClientSecret != '' ? [{ name: 'azure-client-secret', keyVaultUrl: secretAzureClientSecret.properties.secretUri, identity: 'system' }] : []
+      )
     }
     template: {
       containers: [
@@ -343,19 +371,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('1.0')
             memory: '2Gi'
           }
-          env: [
-            { name: 'DATABASE_URL', secretRef: 'database-url' }
-            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
-            { name: 'CREDENTIAL_ENCRYPTION_KEY', secretRef: 'credential-encryption-key' }
-            { name: 'SESSION_SECRET', secretRef: 'session-secret' }
-            { name: 'VOYAGE_API_KEY', secretRef: 'voyage-api-key' }
-            { name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }
-            { name: 'AZURE_TENANT_ID', secretRef: 'azure-tenant-id' }
-            { name: 'AZURE_CLIENT_ID', secretRef: 'azure-client-id' }
-            { name: 'AZURE_CLIENT_SECRET', secretRef: 'azure-client-secret' }
-            { name: 'DASHBOARD_PORT', value: '3100' }
-            { name: 'EMBEDDING_PROVIDER', value: 'voyage' }
-          ]
+          env: concat(
+            [
+              { name: 'DATABASE_URL', secretRef: 'database-url' }
+              { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+              { name: 'CREDENTIAL_ENCRYPTION_KEY', secretRef: 'credential-encryption-key' }
+              { name: 'SESSION_SECRET', secretRef: 'session-secret' }
+              { name: 'DASHBOARD_PORT', value: '3100' }
+              { name: 'EMBEDDING_PROVIDER', value: 'voyage' }
+            ]
+            voyageApiKey != '' ? [{ name: 'VOYAGE_API_KEY', secretRef: 'voyage-api-key' }] : [{ name: 'VOYAGE_API_KEY', value: '' }]
+            openaiApiKey != '' ? [{ name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }] : [{ name: 'OPENAI_API_KEY', value: '' }]
+            azureOpenaiApiKey != '' ? [{ name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-api-key' }] : [{ name: 'AZURE_OPENAI_API_KEY', value: '' }]
+            [{ name: 'AZURE_OPENAI_ENDPOINT', value: azureOpenaiEndpoint }]
+            azureTenantId != '' ? [{ name: 'AZURE_TENANT_ID', secretRef: 'azure-tenant-id' }] : [{ name: 'AZURE_TENANT_ID', value: '' }]
+            azureClientId != '' ? [{ name: 'AZURE_CLIENT_ID', secretRef: 'azure-client-id' }] : [{ name: 'AZURE_CLIENT_ID', value: '' }]
+            azureClientSecret != '' ? [{ name: 'AZURE_CLIENT_SECRET', secretRef: 'azure-client-secret' }] : [{ name: 'AZURE_CLIENT_SECRET', value: '' }]
+          )
         }
       ]
       scale: {
@@ -370,7 +402,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
 // RBAC: Grant Container App's managed identity Key Vault Secrets User role
 // ---------------------------------------------------------------------------
 
-resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useRbac) {
   name: guid(keyVault.id, containerApp.id, keyVaultSecretsUserRoleId)
   scope: keyVault
   properties: {

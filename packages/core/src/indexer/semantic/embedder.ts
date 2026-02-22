@@ -1,7 +1,8 @@
 /**
  * Pluggable embedding provider for the semantic layer.
  *
- * Supports Voyage AI (voyage-code-3) and OpenAI (text-embedding-3-small).
+ * Supports Voyage AI (voyage-code-3), OpenAI (text-embedding-3-small),
+ * and Azure OpenAI (text-embedding-3-small via Azure AI Foundry).
  * A factory function selects the provider based on configuration.
  */
 
@@ -164,6 +165,80 @@ export class OpenAIProvider implements EmbeddingProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Azure OpenAI provider
+// ---------------------------------------------------------------------------
+
+interface AzureOpenAIEmbeddingResponse {
+  data: Array<{ embedding: number[] }>;
+  usage?: { prompt_tokens?: number; total_tokens?: number };
+}
+
+/**
+ * Azure OpenAI embedding provider.
+ *
+ * Calls the Azure AI Foundry REST API. Requires AZURE_OPENAI_API_KEY and
+ * AZURE_OPENAI_ENDPOINT env vars.
+ */
+export class AzureOpenAIProvider implements EmbeddingProvider {
+  readonly name = "azure-openai";
+  readonly model: string;
+  private readonly apiKey: string;
+  private readonly endpoint: string;
+
+  constructor(model: string) {
+    this.model = model;
+    const key = process.env.AZURE_OPENAI_API_KEY;
+    if (!key) {
+      throw new Error("AZURE_OPENAI_API_KEY environment variable is required for Azure OpenAI embeddings");
+    }
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    if (!endpoint) {
+      throw new Error("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI embeddings");
+    }
+    this.apiKey = key;
+    this.endpoint = endpoint.replace(/\/+$/, ""); // strip trailing slashes
+  }
+
+  async embed(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+
+    const url = `${this.endpoint}/openai/deployments/${this.model}/embeddings?api-version=2024-06-01`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": this.apiKey,
+      },
+      body: JSON.stringify({
+        input: texts,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Azure OpenAI API error (${response.status}): ${body}`,
+      );
+    }
+
+    const data = (await response.json()) as AzureOpenAIEmbeddingResponse;
+
+    logger.debug(
+      {
+        provider: this.name,
+        model: this.model,
+        texts: texts.length,
+        tokens: data.usage?.total_tokens,
+      },
+      "Azure OpenAI embeddings generated",
+    );
+
+    return data.data.map((d) => d.embedding);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -183,9 +258,12 @@ export function createEmbedder(config: SemanticConfig): EmbeddingProvider {
     case "openai":
       return new OpenAIProvider(config.embeddingModel);
 
+    case "azure-openai":
+      return new AzureOpenAIProvider(config.embeddingModel);
+
     default:
       throw new Error(
-        `Unknown embedding provider "${config.embeddingProvider}". Supported: voyage, openai.`,
+        `Unknown embedding provider "${config.embeddingProvider}". Supported: voyage, openai, azure-openai.`,
       );
   }
 }

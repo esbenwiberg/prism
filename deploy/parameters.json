@@ -3,7 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": {
-      "value": "norwayeast"
+      "value": "swedencentral"
     },
     "baseName": {
       "value": "prism"
@@ -12,13 +12,10 @@
       "value": "prismadmin"
     },
     "pgAdminPassword": {
-      "value": "<REPLACE: PostgreSQL admin password>"
-    },
-    "databaseUrl": {
-      "value": "<REPLACE: postgresql://prismadmin:<password>@<server>.postgres.database.azure.com:5432/prism?sslmode=require>"
+      "value": "<REPLACE>"
     },
     "anthropicApiKey": {
-      "value": "<REPLACE: Anthropic API key>"
+      "value": "<REPLACE>"
     },
     "credentialEncryptionKey": {
       "value": "<REPLACE: 32-byte hex-encoded AES-256-GCM key>"
@@ -30,6 +27,12 @@
       "value": ""
     },
     "openaiApiKey": {
+      "value": ""
+    },
+    "azureOpenaiApiKey": {
+      "value": ""
+    },
+    "azureOpenaiEndpoint": {
       "value": ""
     },
     "azureTenantId": {

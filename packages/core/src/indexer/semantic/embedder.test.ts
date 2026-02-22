@@ -10,6 +10,7 @@ import {
   createEmbedder,
   VoyageProvider,
   OpenAIProvider,
+  AzureOpenAIProvider,
 } from "./embedder.js";
 import type { SemanticConfig } from "../../domain/types.js";
 
@@ -23,7 +24,7 @@ function makeConfig(overrides: Partial<SemanticConfig> = {}): SemanticConfig {
     model: "claude-haiku-4-5-20251001",
     embeddingProvider: "voyage",
     embeddingModel: "voyage-code-3",
-    embeddingDimensions: 1536,
+    embeddingDimensions: 3072,
     budgetUsd: 10.0,
     ...overrides,
   };
@@ -85,6 +86,35 @@ describe("createEmbedder", () => {
         delete process.env.VOYAGE_API_KEY;
       } else {
         process.env.VOYAGE_API_KEY = originalKey;
+      }
+    }
+  });
+
+  it("creates an AzureOpenAIProvider when provider is 'azure-openai'", () => {
+    const originalKey = process.env.AZURE_OPENAI_API_KEY;
+    const originalEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    process.env.AZURE_OPENAI_API_KEY = "test-key";
+    process.env.AZURE_OPENAI_ENDPOINT = "https://test.openai.azure.com";
+    try {
+      const embedder = createEmbedder(
+        makeConfig({
+          embeddingProvider: "azure-openai",
+          embeddingModel: "text-embedding-3-large",
+        }),
+      );
+      expect(embedder).toBeInstanceOf(AzureOpenAIProvider);
+      expect(embedder.name).toBe("azure-openai");
+      expect(embedder.model).toBe("text-embedding-3-large");
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.AZURE_OPENAI_API_KEY;
+      } else {
+        process.env.AZURE_OPENAI_API_KEY = originalKey;
+      }
+      if (originalEndpoint === undefined) {
+        delete process.env.AZURE_OPENAI_ENDPOINT;
+      } else {
+        process.env.AZURE_OPENAI_ENDPOINT = originalEndpoint;
       }
     }
   });
@@ -195,6 +225,100 @@ describe("OpenAIProvider", () => {
         delete process.env.OPENAI_API_KEY;
       } else {
         process.env.OPENAI_API_KEY = originalKey;
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AzureOpenAIProvider
+// ---------------------------------------------------------------------------
+
+describe("AzureOpenAIProvider", () => {
+  it("throws if AZURE_OPENAI_API_KEY is not set", () => {
+    const originalKey = process.env.AZURE_OPENAI_API_KEY;
+    const originalEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    delete process.env.AZURE_OPENAI_API_KEY;
+    process.env.AZURE_OPENAI_ENDPOINT = "https://test.openai.azure.com";
+    try {
+      expect(() => new AzureOpenAIProvider("text-embedding-3-large")).toThrow(
+        "AZURE_OPENAI_API_KEY",
+      );
+    } finally {
+      if (originalKey !== undefined) {
+        process.env.AZURE_OPENAI_API_KEY = originalKey;
+      }
+      if (originalEndpoint === undefined) {
+        delete process.env.AZURE_OPENAI_ENDPOINT;
+      } else {
+        process.env.AZURE_OPENAI_ENDPOINT = originalEndpoint;
+      }
+    }
+  });
+
+  it("throws if AZURE_OPENAI_ENDPOINT is not set", () => {
+    const originalKey = process.env.AZURE_OPENAI_API_KEY;
+    const originalEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    process.env.AZURE_OPENAI_API_KEY = "test-key";
+    delete process.env.AZURE_OPENAI_ENDPOINT;
+    try {
+      expect(() => new AzureOpenAIProvider("text-embedding-3-large")).toThrow(
+        "AZURE_OPENAI_ENDPOINT",
+      );
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.AZURE_OPENAI_API_KEY;
+      } else {
+        process.env.AZURE_OPENAI_API_KEY = originalKey;
+      }
+      if (originalEndpoint !== undefined) {
+        process.env.AZURE_OPENAI_ENDPOINT = originalEndpoint;
+      }
+    }
+  });
+
+  it("has correct name and model", () => {
+    const originalKey = process.env.AZURE_OPENAI_API_KEY;
+    const originalEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    process.env.AZURE_OPENAI_API_KEY = "test-key";
+    process.env.AZURE_OPENAI_ENDPOINT = "https://test.openai.azure.com";
+    try {
+      const provider = new AzureOpenAIProvider("text-embedding-3-large");
+      expect(provider.name).toBe("azure-openai");
+      expect(provider.model).toBe("text-embedding-3-large");
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.AZURE_OPENAI_API_KEY;
+      } else {
+        process.env.AZURE_OPENAI_API_KEY = originalKey;
+      }
+      if (originalEndpoint === undefined) {
+        delete process.env.AZURE_OPENAI_ENDPOINT;
+      } else {
+        process.env.AZURE_OPENAI_ENDPOINT = originalEndpoint;
+      }
+    }
+  });
+
+  it("returns empty array for empty input", async () => {
+    const originalKey = process.env.AZURE_OPENAI_API_KEY;
+    const originalEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    process.env.AZURE_OPENAI_API_KEY = "test-key";
+    process.env.AZURE_OPENAI_ENDPOINT = "https://test.openai.azure.com";
+    try {
+      const provider = new AzureOpenAIProvider("text-embedding-3-large");
+      const result = await provider.embed([]);
+      expect(result).toEqual([]);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.AZURE_OPENAI_API_KEY;
+      } else {
+        process.env.AZURE_OPENAI_API_KEY = originalKey;
+      }
+      if (originalEndpoint === undefined) {
+        delete process.env.AZURE_OPENAI_ENDPOINT;
+      } else {
+        process.env.AZURE_OPENAI_ENDPOINT = originalEndpoint;
       }
     }
   });

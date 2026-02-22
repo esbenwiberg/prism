@@ -21,7 +21,7 @@ set -euo pipefail
 #   - Infrastructure already created via ./deploy/infra.sh
 # ---------------------------------------------------------------------------
 
-RESOURCE_GROUP="${RESOURCE_GROUP:-rg-prism}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-prism-rg}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # Parse --tag flag

@@ -153,7 +153,7 @@ export const embeddings = pgTable(
     summaryId: integer("summary_id")
       .notNull()
       .references(() => summaries.id, { onDelete: "cascade" }),
-    embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+    embedding: vector("embedding", { dimensions: 3072 }).notNull(),
     model: text("model"),
   },
   (table) => [
