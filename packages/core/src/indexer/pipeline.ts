@@ -1123,13 +1123,19 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
 
   logger.info({ projectId: project.id }, "Starting analysis layer");
 
-  const indexRun = await createIndexRun(project.id, "analysis", 0);
+  // Count unique files from function summaries to set an accurate filesTotal upfront
+  const functionSummariesEarly = await getSummariesByLevel(project.id, "function");
+  const uniqueFileCount = new Set(
+    functionSummariesEarly.map((s) => s.targetId.split(":").slice(0, -2).join(":")),
+  ).size;
+
+  const indexRun = await createIndexRun(project.id, "analysis", uniqueFileCount);
   let totalCostUsd = 0;
 
   try {
     // 1. Hierarchical summary rollup
-    // Get existing function-level summaries from semantic layer
-    const functionSummaries = await getSummariesByLevel(project.id, "function");
+    // Re-use the already-fetched function summaries
+    const functionSummaries = functionSummariesEarly;
     logger.info(
       { count: functionSummaries.length },
       "Function summaries available for rollup",
@@ -1151,13 +1157,14 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       });
     }
 
-    // File-level rollup
+    // File-level rollup — update progress after each file
     const fileSummaries = await rollupFileSummaries(
       project.id,
       functionSummaries,
       filePathMap,
       config.analysis,
       budget,
+      (filesProcessed) => updateIndexRunProgress(indexRun.id, filesProcessed),
     );
     totalCostUsd += fileSummaries.reduce(
       (sum, s) => sum + (s.costUsd ? Number(s.costUsd) : 0),

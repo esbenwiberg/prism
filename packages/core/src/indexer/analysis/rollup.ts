@@ -95,6 +95,7 @@ export async function rollupFileSummaries(
   filePathMap: Map<string, { language: string; symbolCount: number }>,
   config: AnalysisConfig,
   budget: BudgetTracker,
+  onProgress?: (filesProcessed: number) => void,
 ): Promise<SummaryRow[]> {
   const client = new Anthropic();
   const template = loadTemplate("summarize-file.md");
@@ -165,6 +166,7 @@ export async function rollupFileSummaries(
       }]);
 
       results.push(...inserted);
+      onProgress?.(results.length);
 
       logger.debug(
         { filePath, costUsd: costUsd.toFixed(4) },
