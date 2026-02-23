@@ -26,7 +26,6 @@ export interface JobProgressData {
 // ---------------------------------------------------------------------------
 
 const INDEX_LAYER_ORDER = ["structural", "docs", "semantic", "analysis", "blueprint"] as const;
-const BLUEPRINT_LAYER_ORDER = ["blueprint"] as const;
 
 const LAYER_LABELS: Record<string, string> = {
   structural: "Structural",
@@ -224,7 +223,7 @@ export function jobProgressFragment(data: JobProgressData): string {
       </div>`
     : "";
 
-  const layerOrder = latestJob.type === "blueprint" ? BLUEPRINT_LAYER_ORDER : INDEX_LAYER_ORDER;
+  const layerOrder = INDEX_LAYER_ORDER;
   const layers = layerOrder.map((layer) =>
     layerRow(layer, byLayer.get(layer), isActive, LAYER_UNIT[layer] ?? "files"),
   ).join("");
