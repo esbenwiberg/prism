@@ -93,71 +93,20 @@ export function projectPage(data: ProjectPageData): string {
   <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toISOString())}</p>
 </div>`;
 
+  const tabClass = "border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-slate-400 whitespace-nowrap transition-colors hover:border-slate-500 hover:text-slate-200";
   const nav = `
-<div class="flex gap-3 mb-6 flex-wrap">
-  <a href="/projects/${project.id}/files"
-     hx-get="/projects/${project.id}/files"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 ring-1 ring-inset ring-blue-400/20 transition-colors hover:bg-blue-500/20">
-    Browse Files
-  </a>
-  <a href="/projects/${project.id}/modules"
-     hx-get="/projects/${project.id}/modules"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-inset ring-cyan-400/20 transition-colors hover:bg-cyan-500/20">
-    Modules
-  </a>
-  <a href="/projects/${project.id}/findings"
-     hx-get="/projects/${project.id}/findings"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 ring-1 ring-inset ring-purple-400/20 transition-colors hover:bg-purple-500/20">
-    View Findings
-  </a>
-  <a href="/projects/${project.id}/blueprints"
-     hx-get="/projects/${project.id}/blueprints"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 ring-1 ring-inset ring-emerald-400/20 transition-colors hover:bg-emerald-500/20">
-    Blueprints
-  </a>
-  <a href="/projects/${project.id}/graph"
-     hx-get="/projects/${project.id}/graph"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 ring-1 ring-inset ring-red-400/20 transition-colors hover:bg-red-500/20">
-    Dependency Graph
-  </a>
-  <a href="/projects/${project.id}/symbols"
-     hx-get="/projects/${project.id}/symbols"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 ring-1 ring-inset ring-amber-400/20 transition-colors hover:bg-amber-500/20">
-    Symbols
-  </a>
-  <a href="/projects/${project.id}/purpose"
-     hx-get="/projects/${project.id}/purpose"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-400 ring-1 ring-inset ring-teal-400/20 transition-colors hover:bg-teal-500/20">
-    Purpose
-  </a>
-  <a href="/projects/${project.id}/summaries"
-     hx-get="/projects/${project.id}/summaries"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
-    Summaries
-  </a>
-  <a href="/projects/${project.id}/pipeline"
-     hx-get="/projects/${project.id}/pipeline"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="inline-flex items-center gap-2 rounded-lg bg-slate-700/50 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-inset ring-slate-600 transition-colors hover:bg-slate-700 hover:text-slate-50">
-    Pipeline
-  </a>
+<div class="border-b border-slate-700 mb-6">
+  <nav class="-mb-px flex gap-1 overflow-x-auto">
+    <a href="/projects/${project.id}/files" hx-get="/projects/${project.id}/files" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Browse Files</a>
+    <a href="/projects/${project.id}/modules" hx-get="/projects/${project.id}/modules" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Modules</a>
+    <a href="/projects/${project.id}/findings" hx-get="/projects/${project.id}/findings" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Findings</a>
+    <a href="/projects/${project.id}/blueprints" hx-get="/projects/${project.id}/blueprints" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Blueprints</a>
+    <a href="/projects/${project.id}/graph" hx-get="/projects/${project.id}/graph" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Dependency Graph</a>
+    <a href="/projects/${project.id}/symbols" hx-get="/projects/${project.id}/symbols" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Symbols</a>
+    <a href="/projects/${project.id}/purpose" hx-get="/projects/${project.id}/purpose" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Purpose</a>
+    <a href="/projects/${project.id}/summaries" hx-get="/projects/${project.id}/summaries" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Summaries</a>
+    <a href="/projects/${project.id}/pipeline" hx-get="/projects/${project.id}/pipeline" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Pipeline</a>
+  </nav>
 </div>`;
 
   const progress = jobProgressFragment({
@@ -167,12 +116,12 @@ export function projectPage(data: ProjectPageData): string {
   });
 
   const content =
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">${escapeHtml(project.name)}</h2>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-4">${escapeHtml(project.name)}</h2>` +
+    nav +
     stats +
     details +
     actionButtons(project) +
-    progress +
-    nav;
+    progress;
 
   return layout({
     title: project.name,
@@ -194,58 +143,30 @@ export function projectFragment(data: ProjectPageData): string {
     indexRuns: indexRuns ?? [],
   });
 
+  const tabCls = "border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-slate-400 whitespace-nowrap transition-colors hover:border-slate-500 hover:text-slate-200";
+  const fragNav = `<div class="border-b border-slate-700 mb-6">
+    <nav class="-mb-px flex gap-1 overflow-x-auto">
+      <a href="/projects/${project.id}/files" hx-get="/projects/${project.id}/files" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Browse Files</a>
+      <a href="/projects/${project.id}/modules" hx-get="/projects/${project.id}/modules" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Modules</a>
+      <a href="/projects/${project.id}/findings" hx-get="/projects/${project.id}/findings" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Findings</a>
+      <a href="/projects/${project.id}/blueprints" hx-get="/projects/${project.id}/blueprints" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Blueprints</a>
+      <a href="/projects/${project.id}/graph" hx-get="/projects/${project.id}/graph" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Dependency Graph</a>
+      <a href="/projects/${project.id}/symbols" hx-get="/projects/${project.id}/symbols" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Symbols</a>
+      <a href="/projects/${project.id}/purpose" hx-get="/projects/${project.id}/purpose" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Purpose</a>
+      <a href="/projects/${project.id}/summaries" hx-get="/projects/${project.id}/summaries" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Summaries</a>
+      <a href="/projects/${project.id}/pipeline" hx-get="/projects/${project.id}/pipeline" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Pipeline</a>
+    </nav>
+  </div>`;
+
   return (
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">${escapeHtml(project.name)}</h2>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-4">${escapeHtml(project.name)}</h2>` +
+    fragNav +
     `<div class="flex gap-4 flex-wrap mb-6">
       ${statCard("Files", project.totalFiles ?? 0)}
       ${statCard("Symbols", project.totalSymbols ?? 0)}
       ${statCard("Findings", findingsCount)}
     </div>` +
     actionButtons(project) +
-    progress +
-    `<div class="flex gap-3 mt-4 flex-wrap">
-      <a href="/projects/${project.id}/files"
-         hx-get="/projects/${project.id}/files"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 ring-1 ring-inset ring-blue-400/20 transition-colors hover:bg-blue-500/20">
-        Browse Files
-      </a>
-      <a href="/projects/${project.id}/findings"
-         hx-get="/projects/${project.id}/findings"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 ring-1 ring-inset ring-purple-400/20 transition-colors hover:bg-purple-500/20">
-        View Findings
-      </a>
-      <a href="/projects/${project.id}/symbols"
-         hx-get="/projects/${project.id}/symbols"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 ring-1 ring-inset ring-amber-400/20 transition-colors hover:bg-amber-500/20">
-        Symbols
-      </a>
-      <a href="/projects/${project.id}/purpose"
-         hx-get="/projects/${project.id}/purpose"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-400 ring-1 ring-inset ring-teal-400/20 transition-colors hover:bg-teal-500/20">
-        Purpose
-      </a>
-      <a href="/projects/${project.id}/summaries"
-         hx-get="/projects/${project.id}/summaries"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
-        Summaries
-      </a>
-      <a href="/projects/${project.id}/pipeline"
-         hx-get="/projects/${project.id}/pipeline"
-         hx-target="#main-content"
-         hx-push-url="true"
-         class="inline-flex items-center gap-2 rounded-lg bg-slate-700/50 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-inset ring-slate-600 transition-colors hover:bg-slate-700 hover:text-slate-50">
-        Pipeline
-      </a>
-    </div>`
+    progress
   );
 }
