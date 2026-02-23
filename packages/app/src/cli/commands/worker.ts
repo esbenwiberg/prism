@@ -12,9 +12,8 @@ import { startWorker } from "../../worker/index.js";
 export const workerCommand = new Command("worker")
   .description("Start the background job worker (polls prism_jobs)")
   .action(async () => {
-    initConfig();
-
     await runMigrations();
+    await initConfig();
     logger.info("Starting Prism worker process");
     console.log("  Prism worker starting — polling for jobs...\n");
 

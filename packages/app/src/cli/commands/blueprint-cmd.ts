@@ -24,7 +24,7 @@ export const blueprintCommand = new Command("blueprint")
   .option("-f, --focus <path>", "Focus on a specific subsystem path (e.g. 'src/api')")
   .action(
     async (projectArg: string, opts: { goal?: string; focus?: string }) => {
-      const config = initConfig();
+      const config = await initConfig();
 
       // Resolve project: by ID or by path
       let project;

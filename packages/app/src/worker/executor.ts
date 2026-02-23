@@ -15,7 +15,7 @@ import {
   cloneDestination,
   decryptToken,
   runPipeline,
-  initConfig,
+  getConfig,
   createBudgetTracker,
   createIndexRun,
   updateIndexRunProgress,
@@ -184,7 +184,7 @@ async function executeBlueprintJob(
     throw new Error(`Project not found: ${projectId}`);
   }
 
-  const config = initConfig();
+  const config = getConfig();
   const budget = createBudgetTracker(config.blueprint.budgetUsd);
   const startTime = Date.now();
 

@@ -143,3 +143,5 @@ export {
   type JobRow,
   type JobOptions,
 } from "./jobs.js";
+
+export { getDbSettings, saveDbSettings } from "./settings.js";

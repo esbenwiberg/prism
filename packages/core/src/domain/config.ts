@@ -10,11 +10,12 @@
  *   const cfg = getConfig();
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import { logger } from "../logger.js";
 import type { PrismConfig } from "./types.js";
+import { getDbSettings, saveDbSettings } from "../db/queries/settings.js";
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -236,36 +237,50 @@ function applyEnvOverrides(config: PrismConfig): PrismConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * Initialise the configuration from a YAML file.
+ * Initialise the configuration.
  *
- * @param configPath — path to the YAML config file (default: `prism.config.yaml`
- *   in the current working directory).
+ * Priority (highest wins):
+ *   1. `PRISM_*` environment-variable overrides
+ *   2. Settings stored in `prism_settings` DB table
+ *   3. `prism.config.yaml` (used as a one-time seed if DB row is absent)
+ *   4. Built-in defaults
  *
- * The function:
- * 1. Reads the YAML file (if it exists).
- * 2. Deep-merges with defaults.
- * 3. Applies `PRISM_*` environment-variable overrides.
- * 4. Caches the result for subsequent `getConfig()` calls.
+ * The resolved config is cached for subsequent `getConfig()` calls.
  */
-export function initConfig(configPath?: string): PrismConfig {
+export async function initConfig(configPath?: string): Promise<PrismConfig> {
+  // Load YAML as fallback seed (used only when DB has no row yet).
   const resolved = configPath ?? resolve(process.cwd(), "prism.config.yaml");
-
   let fileConfig: Record<string, unknown> = {};
-
   if (existsSync(resolved)) {
     const raw = readFileSync(resolved, "utf-8");
     const parsed = yaml.load(raw);
     if (parsed && typeof parsed === "object") {
       fileConfig = parsed as Record<string, unknown>;
     }
-    logger.info({ path: resolved }, "Loaded config from YAML");
-  } else {
-    logger.info({ path: resolved }, "Config file not found, using defaults");
+    logger.debug({ path: resolved }, "Loaded YAML config as seed");
+  }
+
+  // Attempt to load from DB; fall back to YAML seed on error or missing row.
+  let dbConfig: Record<string, unknown> = {};
+  try {
+    dbConfig = await getDbSettings();
+    if (Object.keys(dbConfig).length === 0 && Object.keys(fileConfig).length > 0) {
+      // First run: seed DB from YAML so existing deployments don't lose settings.
+      logger.info("No DB settings found — seeding from YAML config");
+      await saveDbSettings(fileConfig);
+      dbConfig = fileConfig;
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Could not read settings from DB — using YAML/defaults",
+    );
+    dbConfig = fileConfig;
   }
 
   const merged = deepMerge(
     structuredClone(DEFAULT_CONFIG) as unknown as Record<string, unknown>,
-    fileConfig,
+    dbConfig,
   ) as unknown as PrismConfig;
 
   _config = applyEnvOverrides(merged);
@@ -275,11 +290,12 @@ export function initConfig(configPath?: string): PrismConfig {
 /**
  * Return the cached configuration.
  *
- * Lazily calls `initConfig()` on first access.
+ * Requires `initConfig()` to have been awaited at startup.
+ * Throws if called before initialisation.
  */
 export function getConfig(): PrismConfig {
   if (!_config) {
-    return initConfig();
+    throw new Error("Config not initialised — call await initConfig() at startup");
   }
   return _config;
 }
@@ -292,22 +308,18 @@ export function resetConfig(): void {
 }
 
 /**
- * Deep-merge `partial` into the current config, write the result back to
- * `prism.config.yaml`, reset the cache, and return the new config.
+ * Deep-merge `partial` into the current config, persist to the DB, reset
+ * the cache, and return the new config.
  *
  * @param partial — A (possibly nested) subset of PrismConfig to update.
  */
-export function saveConfig(partial: Record<string, unknown>): PrismConfig {
+export async function saveConfig(partial: Record<string, unknown>): Promise<PrismConfig> {
   const current = getConfig();
   const updated = deepMerge(
     structuredClone(current) as unknown as Record<string, unknown>,
     partial,
   ) as unknown as PrismConfig;
-  writeFileSync(
-    resolve(process.cwd(), "prism.config.yaml"),
-    yaml.dump(updated),
-    "utf-8",
-  );
+  await saveDbSettings(updated as unknown as Record<string, unknown>);
   resetConfig();
   return initConfig();
 }

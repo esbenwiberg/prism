@@ -40,7 +40,7 @@ export const initCommand = new Command("init")
     const projectName = opts.name ?? projectPath.split("/").pop() ?? "unnamed";
 
     // Ensure config is loaded.
-    const config = initConfig();
+    const config = await initConfig();
 
     logger.info({ projectPath, projectName }, "Registering project");
 

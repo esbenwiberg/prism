@@ -26,7 +26,7 @@ export const indexCommand = new Command("index")
       opts: { layer?: LayerName; full?: boolean },
     ) => {
       const projectPath = resolve(pathArg);
-      initConfig();
+      await initConfig();
 
       const project = await getProjectByPath(projectPath);
       if (!project) {

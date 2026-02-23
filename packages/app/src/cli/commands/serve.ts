@@ -10,10 +10,10 @@ export const serveCommand = new Command("serve")
   .description("Start the Prism dashboard (Express + HTMX)")
   .option("-p, --port <port>", "Port to listen on")
   .action(async (opts: { port?: string }) => {
-    const config = initConfig();
+    await runMigrations();
+    const config = await initConfig();
     const port = opts.port ? parseInt(opts.port, 10) : config.dashboard.port;
 
-    await runMigrations();
     logger.info({ port }, "Starting dashboard");
     startServer(port);
   });

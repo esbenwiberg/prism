@@ -67,7 +67,7 @@ export const statusCommand = new Command("status")
   .argument("[path]", "Path to a specific project")
   .option("-a, --all", "Show status for all registered projects")
   .action(async (pathArg: string | undefined, opts: { all?: boolean }) => {
-    initConfig();
+    await initConfig();
 
     if (opts.all || !pathArg) {
       const projects = await listProjects();

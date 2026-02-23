@@ -24,7 +24,7 @@ export const analyzeCommand = new Command("analyze")
       projectArg: string,
       opts: { full?: boolean },
     ) => {
-      const config = initConfig();
+      const config = await initConfig();
 
       // Resolve project: by ID or by path
       let project;

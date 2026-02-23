@@ -28,7 +28,7 @@ export const searchCommand = new Command("search")
       query: string,
       opts: { limit: string },
     ) => {
-      const config = initConfig();
+      const config = await initConfig();
       const limit = parseInt(opts.limit, 10) || 10;
 
       // Resolve project: by ID or by path

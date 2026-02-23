@@ -6,6 +6,7 @@
 
 import {
   boolean,
+  halfvec,
   index,
   integer,
   jsonb,
@@ -15,7 +16,6 @@ import {
   text,
   timestamp,
   unique,
-  vector,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
@@ -153,13 +153,13 @@ export const embeddings = pgTable(
     summaryId: integer("summary_id")
       .notNull()
       .references(() => summaries.id, { onDelete: "cascade" }),
-    embedding: vector("embedding", { dimensions: 3072 }).notNull(),
+    embedding: halfvec("embedding", { dimensions: 3072 }).notNull(),
     model: text("model"),
   },
   (table) => [
     index("prism_embeddings_hnsw_idx").using(
       "hnsw",
-      table.embedding.op("vector_cosine_ops"),
+      table.embedding.op("halfvec_cosine_ops"),
     ),
   ],
 );
@@ -286,6 +286,15 @@ export const indexRuns = pgTable("prism_index_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// prism_settings (singleton row — global configuration stored in DB)
+// ---------------------------------------------------------------------------
+export const globalSettings = pgTable("prism_settings", {
+  id: integer("id").primaryKey().default(1),
+  settings: jsonb("settings").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------------------------------------------------------------------------

@@ -90,7 +90,7 @@ router.post("/settings/analysis", async (req: Request, res: Response, next: Next
       return;
     }
 
-    const updatedConfig = saveConfig({
+    const updatedConfig = await saveConfig({
       semantic: { model: semanticModel, budgetUsd: semanticBudget },
       analysis: { model: analysisModel, budgetUsd: analysisBudget },
       blueprint: { model: blueprintModel, budgetUsd: blueprintBudget },
@@ -136,7 +136,7 @@ router.post("/settings/indexer", async (req: Request, res: Response, next: NextF
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    const updatedConfig = saveConfig({
+    const updatedConfig = await saveConfig({
       indexer: { batchSize, maxConcurrentBatches, incrementalByDefault },
       structural: { maxFileSizeBytes, skipPatterns },
     });
