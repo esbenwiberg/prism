@@ -3,7 +3,7 @@
  */
 
 import { layout } from "./layout.js";
-import { escapeHtml, card, statCard, badge, table, type TableColumn } from "./components.js";
+import { escapeHtml, statCard, badge, table, type TableColumn } from "./components.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,6 +25,22 @@ export interface ModulesPageData {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function breadcrumb(projectId: number, projectName: string): string {
+  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
+  <a href="/projects/${projectId}"
+     hx-get="/projects/${projectId}"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  <span class="text-slate-400">Modules</span>
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -34,18 +50,8 @@ export interface ModulesPageData {
 export function modulesPage(data: ModulesPageData): string {
   const { projectId, projectName, modules, userName } = data;
 
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Modules</span>
-</div>`;
-
   const stats = `
-<div class="stat-row">
+<div class="flex gap-4 flex-wrap mb-6">
   ${statCard("Modules", modules.length)}
   ${statCard("Total Files", modules.reduce((sum, m) => sum + m.fileCount, 0))}
   ${statCard("Total Lines", modules.reduce((sum, m) => sum + m.totalLines, 0).toLocaleString())}
@@ -54,7 +60,7 @@ export function modulesPage(data: ModulesPageData): string {
   const columns: TableColumn<ModuleViewData>[] = [
     {
       header: "Module",
-      render: (m) => `<strong>${escapeHtml(m.name)}</strong>`,
+      render: (m) => `<span class="font-medium text-slate-200">${escapeHtml(m.name)}</span>`,
     },
     {
       header: "Files",
@@ -78,22 +84,24 @@ export function modulesPage(data: ModulesPageData): string {
     {
       header: "Summary",
       render: (m) => {
-        if (!m.summary) return `<span style="color:#9ca3af;font-size:0.8125rem;">No summary</span>`;
+        if (!m.summary) return `<span class="text-slate-600 text-xs">No summary</span>`;
         const text = m.summary.length > 150
           ? m.summary.slice(0, 150) + "..."
           : m.summary;
-        return `<span style="font-size:0.8125rem;color:#4b5563;">${escapeHtml(text)}</span>`;
+        return `<span class="text-xs text-slate-400">${escapeHtml(text)}</span>`;
       },
     },
   ];
 
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
+    <p class="text-sm text-slate-400">No modules found. Run the indexer first.</p>
+  </div>`;
+
   const content =
-    breadcrumb +
-    `<h1 class="page-title">Modules (${modules.length})</h1>` +
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
     stats +
-    (modules.length > 0
-      ? table(columns, modules)
-      : `<p style="color:#6b7280;">No modules found. Run the indexer first.</p>`);
+    (modules.length > 0 ? table(columns, modules) : emptyState);
 
   return layout({
     title: `${projectName} — Modules`,
@@ -112,7 +120,7 @@ export function modulesFragment(data: ModulesPageData): string {
   const columns: TableColumn<ModuleViewData>[] = [
     {
       header: "Module",
-      render: (m) => `<strong>${escapeHtml(m.name)}</strong>`,
+      render: (m) => `<span class="font-medium text-slate-200">${escapeHtml(m.name)}</span>`,
     },
     {
       header: "Files",
@@ -122,22 +130,16 @@ export function modulesFragment(data: ModulesPageData): string {
     {
       header: "Summary",
       render: (m) => {
-        if (!m.summary) return "—";
+        if (!m.summary) return `<span class="text-slate-600">—</span>`;
         const text = m.summary.length > 100 ? m.summary.slice(0, 100) + "..." : m.summary;
-        return `<span style="font-size:0.8125rem;">${escapeHtml(text)}</span>`;
+        return `<span class="text-xs text-slate-400">${escapeHtml(text)}</span>`;
       },
     },
   ];
 
-  return `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Modules</span>
-</div>
-<h1 class="page-title">Modules (${modules.length})</h1>` +
-    table(columns, modules);
+  return (
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
+    table(columns, modules)
+  );
 }

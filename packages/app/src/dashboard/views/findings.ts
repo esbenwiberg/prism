@@ -43,23 +43,39 @@ const SEVERITIES = ["all", "critical", "high", "medium", "low", "info"];
 function filterBar(projectId: number, activeFilter: string): string {
   const buttons = SEVERITIES.map((sev) => {
     const isActive = sev === activeFilter || (sev === "all" && !activeFilter);
-    const style = isActive
-      ? "background:#2563eb;color:#fff;"
-      : "background:#f3f4f6;color:#374151;";
     const url =
       sev === "all"
         ? `/projects/${projectId}/findings`
         : `/projects/${projectId}/findings?severity=${sev}`;
+    const activeClasses = isActive
+      ? "bg-purple-500 text-white"
+      : "bg-slate-800 text-slate-400 ring-1 ring-inset ring-slate-700 hover:bg-slate-700 hover:text-slate-50";
     return `<a href="${url}"
                hx-get="${url}"
                hx-target="#main-content"
                hx-push-url="true"
-               style="padding:6px 12px;border-radius:6px;text-decoration:none;font-size:0.75rem;font-weight:600;${style}">
+               class="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${activeClasses}">
               ${escapeHtml(sev === "all" ? "All" : sev.charAt(0).toUpperCase() + sev.slice(1))}
             </a>`;
   }).join("");
 
-  return `<div style="display:flex;gap:8px;margin-bottom:16px;">${buttons}</div>`;
+  return `<div class="flex gap-2 mb-4 flex-wrap">${buttons}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Breadcrumb
+// ---------------------------------------------------------------------------
+
+function breadcrumb(projectId: number, projectName: string, extra?: string): string {
+  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
+  <a href="/projects/${projectId}"
+     hx-get="/projects/${projectId}"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  ${extra ? `<a href="/projects/${projectId}/findings" hx-get="/projects/${projectId}/findings" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300">Findings</a><span class="text-slate-600">/</span><span class="text-slate-400">${extra}</span>` : `<span class="text-slate-400">Findings</span>`}
+</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +100,7 @@ export function findingsPage(data: FindingsPageData): string {
     },
     {
       header: "Title",
-      render: (f) => escapeHtml(f.title),
+      render: (f) => `<span class="font-medium text-slate-200">${escapeHtml(f.title)}</span>`,
     },
     {
       header: "Description",
@@ -92,38 +108,30 @@ export function findingsPage(data: FindingsPageData): string {
         const text = f.description.length > 120
           ? f.description.slice(0, 120) + "..."
           : f.description;
-        return `<span style="font-size:0.8125rem;color:#4b5563;">${escapeHtml(text)}</span>`;
+        return `<span class="text-slate-400 text-xs">${escapeHtml(text)}</span>`;
       },
     },
     {
       header: "Suggestion",
       render: (f) => {
-        if (!f.suggestion) return "—";
+        if (!f.suggestion) return `<span class="text-slate-600">—</span>`;
         const text = f.suggestion.length > 100
           ? f.suggestion.slice(0, 100) + "..."
           : f.suggestion;
-        return `<span style="font-size:0.8125rem;color:#059669;">${escapeHtml(text)}</span>`;
+        return `<span class="text-emerald-400 text-xs">${escapeHtml(text)}</span>`;
       },
     },
   ];
 
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Findings</span>
-</div>`;
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
+    <p class="text-sm text-slate-400">No findings yet. Run the analysis pipeline to detect issues.</p>
+  </div>`;
 
   const content =
-    breadcrumb +
-    `<h1 class="page-title">Findings (${findings.length})</h1>` +
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
     filterBar(projectId, severityFilter) +
-    (findings.length > 0
-      ? table(columns, findings)
-      : `<p style="color:#6b7280;">No findings yet. Run the analysis pipeline to detect issues.</p>`);
+    (findings.length > 0 ? table(columns, findings) : emptyState);
 
   return layout({
     title: `${projectName} — Findings`,
@@ -151,20 +159,13 @@ export function findingsFragment(data: FindingsPageData): string {
     },
     {
       header: "Title",
-      render: (f) => escapeHtml(f.title),
+      render: (f) => `<span class="font-medium text-slate-200">${escapeHtml(f.title)}</span>`,
     },
   ];
 
   return (
-    `<div style="margin-bottom:16px;font-size:0.875rem;">
-      <a href="/projects/${projectId}"
-         hx-get="/projects/${projectId}"
-         hx-target="#main-content"
-         hx-push-url="true">${escapeHtml(projectName)}</a>
-      <span style="color:#9ca3af;"> / </span>
-      <span style="color:#6b7280;">Findings</span>
-    </div>` +
-    `<h1 class="page-title">Findings (${findings.length})</h1>` +
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
     filterBar(projectId, severityFilter) +
     table(columns, findings)
   );

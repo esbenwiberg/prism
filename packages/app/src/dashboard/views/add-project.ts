@@ -27,7 +27,7 @@ function addProjectContent(data: AddProjectPageData): string {
   const { credentials, error } = data;
 
   const errorHtml = error
-    ? `<div style="background:#fee2e2;color:#991b1b;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.875rem;">${escapeHtml(error)}</div>`
+    ? `<div class="rounded-lg border border-red-400/30 bg-red-400/5 px-4 py-3 mb-4 text-sm text-red-400">${escapeHtml(error)}</div>`
     : "";
 
   const credentialOptions = credentials
@@ -39,44 +39,46 @@ function addProjectContent(data: AddProjectPageData): string {
 
   return `
 ${errorHtml}
-<h1 class="page-title">Add Project</h1>
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;max-width:600px;">
+<h2 class="text-2xl font-bold text-slate-50 mb-6">Add Project</h2>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 max-w-2xl">
   <form hx-post="/projects" hx-target="#main-content">
-    <div style="margin-bottom:16px;">
-      <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Git URL (HTTPS)</label>
-      <input type="url" name="gitUrl" required placeholder="https://github.com/org/repo.git"
-        id="git-url-input"
-        style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
-      <p style="font-size:0.75rem;color:#9ca3af;margin-top:4px;">Supported: GitHub and Azure DevOps HTTPS URLs.</p>
-    </div>
-    <div style="margin-bottom:16px;">
-      <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Project Name</label>
-      <input type="text" name="name" placeholder="Auto-derived from URL if blank"
-        id="project-name-input"
-        style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
-      <p style="font-size:0.75rem;color:#9ca3af;margin-top:4px;">Leave blank to derive from the repository URL.</p>
-    </div>
-    <div style="margin-bottom:20px;">
-      <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Credential</label>
-      <select name="credentialId"
-        style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;background:#fff;">
-        <option value="">None (public repository)</option>
-        ${credentialOptions}
-      </select>
-      <p style="font-size:0.75rem;color:#9ca3af;margin-top:4px;">Select a stored PAT for private repositories.</p>
-    </div>
-    <div style="display:flex;gap:12px;align-items:center;">
-      <button type="submit"
-        style="background:#2563eb;color:#fff;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:0.875rem;font-weight:600;">
-        Create Project
-      </button>
-      <a href="/"
-        hx-get="/"
-        hx-target="#main-content"
-        hx-push-url="true"
-        style="font-size:0.875rem;color:#6b7280;text-decoration:none;">
-        Cancel
-      </a>
+    <div class="space-y-5">
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Git URL (HTTPS)</label>
+        <input type="url" name="gitUrl" required placeholder="https://github.com/org/repo.git"
+          id="git-url-input"
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+        <p class="text-xs text-slate-500">Supported: GitHub and Azure DevOps HTTPS URLs.</p>
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Project Name</label>
+        <input type="text" name="name" placeholder="Auto-derived from URL if blank"
+          id="project-name-input"
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+        <p class="text-xs text-slate-500">Leave blank to derive from the repository URL.</p>
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Credential</label>
+        <select name="credentialId"
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
+          <option value="">None (public repository)</option>
+          ${credentialOptions}
+        </select>
+        <p class="text-xs text-slate-500">Select a stored PAT for private repositories.</p>
+      </div>
+      <div class="flex items-center gap-4 pt-2">
+        <button type="submit"
+          class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400">
+          Create Project
+        </button>
+        <a href="/"
+          hx-get="/"
+          hx-target="#main-content"
+          hx-push-url="true"
+          class="text-sm text-slate-400 hover:text-slate-300 transition-colors">
+          Cancel
+        </a>
+      </div>
     </div>
   </form>
 </div>

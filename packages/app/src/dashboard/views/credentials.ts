@@ -45,14 +45,14 @@ function credentialContent(data: CredentialsPageData): string {
   const { credentials, flash } = data;
 
   const flashHtml = flash
-    ? `<div style="background:#dcfce7;color:#166534;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.875rem;">${escapeHtml(flash)}</div>`
+    ? `<div class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-4 py-3 mb-4 text-sm text-emerald-400">${escapeHtml(flash)}</div>`
     : "";
 
   // ---------- Table ----------
   const columns: TableColumn<CredentialRow>[] = [
     {
       header: "Label",
-      render: (c) => escapeHtml(c.label),
+      render: (c) => `<span class="font-medium text-slate-200">${escapeHtml(c.label)}</span>`,
     },
     {
       header: "Provider",
@@ -60,12 +60,15 @@ function credentialContent(data: CredentialsPageData): string {
     },
     {
       header: "Created",
-      render: (c) => escapeHtml(formatDate(c.createdAt)),
+      render: (c) => `<span class="text-slate-400">${escapeHtml(formatDate(c.createdAt))}</span>`,
     },
     {
       header: "",
       render: (c) =>
-        `<button hx-delete="/credentials/${c.id}" hx-target="#main-content" hx-confirm="Delete credential &quot;${escapeHtml(c.label)}&quot;?" style="background:#fee2e2;color:#991b1b;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.75rem;font-weight:600;">Delete</button>`,
+        `<button hx-delete="/credentials/${c.id}" hx-target="#main-content" hx-confirm="Delete credential &quot;${escapeHtml(c.label)}&quot;?"
+          class="rounded-lg bg-red-400/10 px-3 py-1 text-xs font-medium text-red-400 ring-1 ring-inset ring-red-400/20 hover:bg-red-400/20 transition-colors">
+          Delete
+        </button>`,
       align: "right",
     },
   ];
@@ -73,35 +76,37 @@ function credentialContent(data: CredentialsPageData): string {
   const tableHtml =
     credentials.length > 0
       ? table(columns, credentials)
-      : `<p style="color:#6b7280;">No credentials configured yet.</p>`;
+      : `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-10">
+          <p class="text-sm text-slate-400">No credentials configured yet.</p>
+        </div>`;
 
   // ---------- Add form ----------
   const formHtml = `
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:24px;">
-  <h2 style="font-size:1.125rem;font-weight:600;margin-bottom:12px;">Add Credential</h2>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mt-6">
+  <h2 class="text-base font-semibold text-slate-50 mb-4">Add Credential</h2>
   <form hx-post="/credentials" hx-target="#main-content">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-      <div style="flex:1;min-width:180px;">
-        <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Label</label>
+    <div class="flex gap-4 flex-wrap items-end">
+      <div class="flex-1 min-w-[180px] space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Label</label>
         <input type="text" name="label" required placeholder="e.g. my-github-pat"
-          style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
       </div>
-      <div style="min-width:160px;">
-        <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Provider</label>
+      <div class="min-w-[160px] space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Provider</label>
         <select name="provider" required
-          style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;background:#fff;">
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
           <option value="github">GitHub</option>
           <option value="azuredevops">Azure DevOps</option>
         </select>
       </div>
-      <div style="flex:1;min-width:220px;">
-        <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Personal Access Token</label>
+      <div class="flex-1 min-w-[220px] space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Personal Access Token</label>
         <input type="password" name="token" required placeholder="ghp_..."
-          style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
       </div>
       <div>
         <button type="submit"
-          style="background:#2563eb;color:#fff;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:0.875rem;font-weight:600;">
+          class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400">
           Add
         </button>
       </div>
@@ -110,7 +115,7 @@ function credentialContent(data: CredentialsPageData): string {
 </div>`;
 
   return flashHtml +
-    `<h1 class="page-title">Credentials</h1>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Credentials</h2>` +
     tableHtml +
     formHtml;
 }

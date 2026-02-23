@@ -22,11 +22,11 @@ export function overviewPage(
     {
       header: "Name",
       render: (p) =>
-        `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true">${escapeHtml(p.name)}</a>`,
+        `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300 font-medium">${escapeHtml(p.name)}</a>`,
     },
     {
       header: "Path",
-      render: (p) => escapeHtml(p.path),
+      render: (p) => `<span class="font-mono text-xs text-slate-400">${escapeHtml(p.path)}</span>`,
     },
     {
       header: "Language",
@@ -52,16 +52,21 @@ export function overviewPage(
     hx-get="/projects/new"
     hx-target="#main-content"
     hx-push-url="true"
-    style="display:inline-block;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;font-weight:600;margin-bottom:16px;">
+    class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400 mb-6">
     + Add Project
   </a>`;
 
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12 px-6">
+    <svg class="h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+    </svg>
+    <p class="mt-3 text-sm text-slate-400">No projects registered yet. Click "Add Project" or use <code class="font-mono text-xs">prism init</code> to add one.</p>
+  </div>`;
+
   const content =
-    `<h1 class="page-title">Projects</h1>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Projects</h2>` +
     addButton +
-    (projects.length > 0
-      ? table(columns, projects)
-      : `<p style="color:#6b7280;">No projects registered yet. Click "Add Project" or use <code>prism init</code> to add one.</p>`);
+    (projects.length > 0 ? table(columns, projects) : emptyState);
 
   return layout({
     title: "Overview",
@@ -79,11 +84,11 @@ export function overviewFragment(projects: Project[]): string {
     {
       header: "Name",
       render: (p) =>
-        `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true">${escapeHtml(p.name)}</a>`,
+        `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300 font-medium">${escapeHtml(p.name)}</a>`,
     },
     {
       header: "Path",
-      render: (p) => escapeHtml(p.path),
+      render: (p) => `<span class="font-mono text-xs text-slate-400">${escapeHtml(p.path)}</span>`,
     },
     {
       header: "Status",
@@ -95,13 +100,13 @@ export function overviewFragment(projects: Project[]): string {
     hx-get="/projects/new"
     hx-target="#main-content"
     hx-push-url="true"
-    style="display:inline-block;padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;font-weight:600;margin-bottom:16px;">
+    class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400 mb-6">
     + Add Project
   </a>`;
 
-  return `<h1 class="page-title">Projects</h1>` +
+  return `<h2 class="text-2xl font-bold text-slate-50 mb-6">Projects</h2>` +
     addButton +
     (projects.length > 0
       ? table(columns, projects)
-      : `<p style="color:#6b7280;">No projects registered yet.</p>`);
+      : `<p class="text-sm text-slate-400">No projects registered yet.</p>`);
 }

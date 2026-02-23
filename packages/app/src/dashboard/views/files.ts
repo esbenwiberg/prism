@@ -60,6 +60,18 @@ function fileTypeBadges(file: FileViewData): string {
   return badges.join(" ");
 }
 
+function breadcrumb(projectId: number, projectName: string): string {
+  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
+  <a href="/projects/${projectId}"
+     hx-get="/projects/${projectId}"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  <span class="text-slate-400">Files</span>
+</div>`;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -73,7 +85,7 @@ export function filesPage(data: FilesPageData): string {
   const columns: TableColumn<FileViewData>[] = [
     {
       header: "Path",
-      render: (f) => escapeHtml(f.path),
+      render: (f) => `<span class="font-mono text-xs text-slate-300">${escapeHtml(f.path)}</span>`,
     },
     {
       header: "Language",
@@ -105,22 +117,14 @@ export function filesPage(data: FilesPageData): string {
     },
   ];
 
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Files</span>
-</div>`;
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
+    <p class="text-sm text-slate-400">No files indexed yet. Run <code class="font-mono text-xs">prism index</code> first.</p>
+  </div>`;
 
   const content =
-    breadcrumb +
-    `<h1 class="page-title">Files (${files.length})</h1>` +
-    (files.length > 0
-      ? table(columns, files)
-      : `<p style="color:#6b7280;">No files indexed yet. Run <code>prism index</code> first.</p>`);
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Files (${files.length})</h2>` +
+    (files.length > 0 ? table(columns, files) : emptyState);
 
   return layout({
     title: `${projectName} — Files`,
@@ -139,7 +143,7 @@ export function filesFragment(data: FilesPageData): string {
   const columns: TableColumn<FileViewData>[] = [
     {
       header: "Path",
-      render: (f) => escapeHtml(f.path),
+      render: (f) => `<span class="font-mono text-xs text-slate-300">${escapeHtml(f.path)}</span>`,
     },
     {
       header: "Lines",
@@ -159,15 +163,8 @@ export function filesFragment(data: FilesPageData): string {
   ];
 
   return (
-    `<div style="margin-bottom:16px;font-size:0.875rem;">
-      <a href="/projects/${projectId}"
-         hx-get="/projects/${projectId}"
-         hx-target="#main-content"
-         hx-push-url="true">${escapeHtml(projectName)}</a>
-      <span style="color:#9ca3af;"> / </span>
-      <span style="color:#6b7280;">Files</span>
-    </div>` +
-    `<h1 class="page-title">Files (${files.length})</h1>` +
+    breadcrumb(projectId, projectName) +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Files (${files.length})</h2>` +
     table(columns, files)
   );
 }

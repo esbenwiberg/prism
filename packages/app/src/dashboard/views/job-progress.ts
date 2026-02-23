@@ -53,8 +53,8 @@ export function jobProgressFragment(data: JobProgressData): string {
   const { projectId, latestJob, indexRuns } = data;
 
   if (!latestJob) {
-    return `<div id="job-progress">
-  <p style="color:#6b7280;font-size:0.875rem;">No jobs have been run for this project yet.</p>
+    return `<div id="job-progress" class="mb-6">
+  <p class="text-sm text-slate-400">No jobs have been run for this project yet.</p>
 </div>`;
   }
 
@@ -78,12 +78,12 @@ export function jobProgressFragment(data: JobProgressData): string {
 
   // Build progress details
   const layerHtml = displayRun
-    ? `<span style="font-weight:600;">${escapeHtml(displayRun.layer)}</span>`
-    : "--";
+    ? `<span class="font-medium text-slate-200">${escapeHtml(displayRun.layer)}</span>`
+    : `<span class="text-slate-500">--</span>`;
 
   const filesHtml = displayRun
-    ? `${displayRun.filesProcessed} / ${displayRun.filesTotal}`
-    : "--";
+    ? `<span class="font-medium text-slate-200">${displayRun.filesProcessed} / ${displayRun.filesTotal}</span>`
+    : `<span class="text-slate-500">--</span>`;
 
   // Total cost from all completed runs
   const totalCost = indexRuns.reduce((sum, r) => {
@@ -95,31 +95,35 @@ export function jobProgressFragment(data: JobProgressData): string {
   }, 0);
 
   const errorHtml = latestJob.status === "failed" && latestJob.error
-    ? `<div style="background:#fee2e2;color:#991b1b;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:0.8125rem;">
-        <strong>Error:</strong> ${escapeHtml(latestJob.error)}
+    ? `<div class="mt-3 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs text-red-400">
+        <span class="font-medium">Error:</span> ${escapeHtml(latestJob.error)}
       </div>`
     : "";
 
-  return `<div id="job-progress"${pollingAttr}>
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-      <strong style="font-size:0.875rem;">Latest Job:</strong>
+  return `<div id="job-progress" class="mb-6"${pollingAttr}>
+  <div class="rounded-xl border border-slate-700 bg-slate-800 p-5">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="text-sm font-medium text-slate-300">Latest Job:</span>
       ${statusBadge(latestJob.status)}
-      <span style="font-size:0.8125rem;color:#6b7280;">${escapeHtml(latestJob.type)}</span>
-      ${isActive ? '<span class="loading-indicator" style="font-size:0.75rem;color:#2563eb;">polling...</span>' : ""}
+      <span class="text-xs text-slate-400">${escapeHtml(latestJob.type)}</span>
+      ${isActive ? `<span class="text-xs text-purple-400 animate-pulse">polling...</span>` : ""}
     </div>
-    <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:0.8125rem;">
-      <div>
-        <span style="color:#6b7280;">Layer:</span> ${layerHtml}
+    <div class="flex gap-6 flex-wrap text-sm">
+      <div class="space-y-0.5">
+        <p class="text-xs text-slate-500 uppercase tracking-wider">Layer</p>
+        <p>${layerHtml}</p>
       </div>
-      <div>
-        <span style="color:#6b7280;">Files:</span> ${filesHtml}
+      <div class="space-y-0.5">
+        <p class="text-xs text-slate-500 uppercase tracking-wider">Files</p>
+        <p>${filesHtml}</p>
       </div>
-      <div>
-        <span style="color:#6b7280;">Elapsed:</span> ${elapsed}
+      <div class="space-y-0.5">
+        <p class="text-xs text-slate-500 uppercase tracking-wider">Elapsed</p>
+        <p class="font-medium text-slate-200">${escapeHtml(elapsed)}</p>
       </div>
-      <div>
-        <span style="color:#6b7280;">Cost:</span> ${totalCost > 0 ? formatCost(totalCost.toFixed(4)) : "--"}
+      <div class="space-y-0.5">
+        <p class="text-xs text-slate-500 uppercase tracking-wider">Cost</p>
+        <p class="font-medium text-slate-200 font-mono">${totalCost > 0 ? formatCost(totalCost.toFixed(4)) : "--"}</p>
       </div>
     </div>
     ${errorHtml}

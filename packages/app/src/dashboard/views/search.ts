@@ -34,7 +34,7 @@ export interface SearchPageData {
 
 function searchInput(projectId: number, currentQuery: string): string {
   return `
-<div style="margin-bottom:24px;">
+<div class="mb-6">
   <input type="text"
          name="q"
          value="${escapeHtml(currentQuery)}"
@@ -44,7 +44,7 @@ function searchInput(projectId: number, currentQuery: string): string {
          hx-target="#search-results"
          hx-push-url="true"
          hx-include="this"
-         style="width:100%;max-width:600px;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:0.875rem;outline:none;"
+         class="block w-full max-w-2xl rounded-lg border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
   />
 </div>`;
 }
@@ -66,7 +66,7 @@ function scoreBadge(score: number): string {
 
 function resultsTable(results: SearchResultViewData[]): string {
   if (results.length === 0) {
-    return `<p style="color:#6b7280;">No results found. Try a different query.</p>`;
+    return `<p class="text-sm text-slate-400">No results found. Try a different query.</p>`;
   }
 
   const columns: TableColumn<SearchResultViewData>[] = [
@@ -81,12 +81,12 @@ function resultsTable(results: SearchResultViewData[]): string {
     },
     {
       header: "Symbol",
-      render: (r) => `<strong>${escapeHtml(r.symbolName ?? "?")}</strong>`,
+      render: (r) => `<span class="font-medium text-slate-200">${escapeHtml(r.symbolName ?? "?")}</span>`,
     },
     {
       header: "File",
       render: (r) =>
-        `<span style="font-size:0.8125rem;color:#4b5563;">${escapeHtml(r.filePath ?? "?")}</span>`,
+        `<span class="font-mono text-xs text-slate-400">${escapeHtml(r.filePath ?? "?")}</span>`,
     },
     {
       header: "Summary",
@@ -95,7 +95,7 @@ function resultsTable(results: SearchResultViewData[]): string {
           r.summaryContent.length > 120
             ? r.summaryContent.slice(0, 120) + "..."
             : r.summaryContent;
-        return `<span style="font-size:0.8125rem;color:#374151;">${escapeHtml(text)}</span>`;
+        return `<span class="text-xs text-slate-400">${escapeHtml(text)}</span>`;
       },
     },
   ];
@@ -113,19 +113,19 @@ function resultsTable(results: SearchResultViewData[]): string {
 export function searchPage(data: SearchPageData): string {
   const { projectId, projectName, query, results, userName } = data;
 
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
+  const breadcrumb = `<div class="mb-4 flex items-center gap-1.5 text-sm">
   <a href="/projects/${projectId}"
      hx-get="/projects/${projectId}"
      hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Search</span>
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  <span class="text-slate-400">Search</span>
 </div>`;
 
   const content =
     breadcrumb +
-    `<h1 class="page-title">Semantic Search</h1>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Semantic Search</h2>` +
     searchInput(projectId, query) +
     `<div id="search-results">` +
     resultsTable(results) +

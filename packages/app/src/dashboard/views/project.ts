@@ -26,42 +26,42 @@ export interface ProjectPageData {
  */
 function actionButtons(project: Project): string {
   return `
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:24px;">
-  <h2 style="font-size:1.125rem;font-weight:600;margin-bottom:12px;">Actions</h2>
-  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-6">
+  <h2 class="text-base font-semibold text-slate-50 mb-4">Actions</h2>
+  <div class="flex gap-3 flex-wrap items-end">
     <button hx-post="/projects/${project.id}/index"
       hx-target="#job-progress"
       hx-swap="outerHTML"
-      style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;font-weight:600;">
+      class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-400">
       Index
     </button>
     <button hx-post="/projects/${project.id}/index"
       hx-target="#job-progress"
       hx-swap="outerHTML"
       hx-vals='{"fullReindex": "true"}'
-      style="padding:8px 16px;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;font-weight:600;">
+      class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-slate-50">
       Re-index
     </button>
   </div>
-  <div style="margin-top:16px;">
-    <h3 style="font-size:0.875rem;font-weight:600;color:#6b7280;margin-bottom:8px;">Generate Blueprints</h3>
+  <div class="mt-5">
+    <h3 class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Generate Blueprints</h3>
     <form hx-post="/projects/${project.id}/blueprint"
       hx-target="#job-progress"
       hx-swap="outerHTML"
-      style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-      <div style="flex:1;min-width:180px;">
-        <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Goal (optional)</label>
+      class="flex gap-3 flex-wrap items-end">
+      <div class="flex-1 min-w-[180px] space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Goal <span class="text-slate-500">(optional)</span></label>
         <input type="text" name="goal" placeholder="e.g. Modernize the auth system"
-          style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
       </div>
-      <div style="flex:1;min-width:180px;">
-        <label style="display:block;font-size:0.75rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Focus (optional)</label>
+      <div class="flex-1 min-w-[180px] space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Focus <span class="text-slate-500">(optional)</span></label>
         <input type="text" name="focus" placeholder="e.g. packages/auth/"
-          style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:0.875rem;" />
+          class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
       </div>
       <div>
         <button type="submit"
-          style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;font-weight:600;">
+          class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400">
           Generate
         </button>
       </div>
@@ -77,57 +77,57 @@ export function projectPage(data: ProjectPageData): string {
   const { project, findingsCount, userName, latestJob, indexRuns } = data;
 
   const stats = `
-<div class="stat-row">
+<div class="flex gap-4 flex-wrap mb-6">
   ${statCard("Files", project.totalFiles ?? 0)}
   ${statCard("Symbols", project.totalSymbols ?? 0)}
   ${statCard("Findings", findingsCount)}
 </div>`;
 
   const details = `
-<div style="margin-bottom:24px;">
-  <p><strong>Path:</strong> ${escapeHtml(project.path)}</p>
-  ${project.gitUrl ? `<p><strong>Git URL:</strong> ${escapeHtml(project.gitUrl)}</p>` : ""}
-  <p><strong>Language:</strong> ${escapeHtml(project.language ?? "Unknown")}</p>
-  <p><strong>Status:</strong> ${statusBadge(project.indexStatus)}</p>
-  <p><strong>Last indexed commit:</strong> ${escapeHtml(project.lastIndexedCommit ?? "\u2014")}</p>
-  <p><strong>Updated:</strong> ${escapeHtml(project.updatedAt.toISOString())}</p>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-6 space-y-2 text-sm">
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Path:</span> <span class="font-mono text-xs">${escapeHtml(project.path)}</span></p>
+  ${project.gitUrl ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Git URL:</span> <span class="font-mono text-xs">${escapeHtml(project.gitUrl)}</span></p>` : ""}
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Status:</span> ${statusBadge(project.indexStatus)}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Last indexed commit:</span> <span class="font-mono text-xs">${escapeHtml(project.lastIndexedCommit ?? "\u2014")}</span></p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toISOString())}</p>
 </div>`;
 
   const nav = `
-<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+<div class="flex gap-3 mb-6 flex-wrap">
   <a href="/projects/${project.id}/files"
      hx-get="/projects/${project.id}/files"
      hx-target="#main-content"
      hx-push-url="true"
-     style="padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+     class="inline-flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 ring-1 ring-inset ring-blue-400/20 transition-colors hover:bg-blue-500/20">
     Browse Files
   </a>
   <a href="/projects/${project.id}/modules"
      hx-get="/projects/${project.id}/modules"
      hx-target="#main-content"
      hx-push-url="true"
-     style="padding:8px 16px;background:#0891b2;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+     class="inline-flex items-center gap-2 rounded-lg bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-inset ring-cyan-400/20 transition-colors hover:bg-cyan-500/20">
     Modules
   </a>
   <a href="/projects/${project.id}/findings"
      hx-get="/projects/${project.id}/findings"
      hx-target="#main-content"
      hx-push-url="true"
-     style="padding:8px 16px;background:#7c3aed;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+     class="inline-flex items-center gap-2 rounded-lg bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 ring-1 ring-inset ring-purple-400/20 transition-colors hover:bg-purple-500/20">
     View Findings
   </a>
   <a href="/projects/${project.id}/blueprints"
      hx-get="/projects/${project.id}/blueprints"
      hx-target="#main-content"
      hx-push-url="true"
-     style="padding:8px 16px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+     class="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 ring-1 ring-inset ring-emerald-400/20 transition-colors hover:bg-emerald-500/20">
     Blueprints
   </a>
   <a href="/projects/${project.id}/graph"
      hx-get="/projects/${project.id}/graph"
      hx-target="#main-content"
      hx-push-url="true"
-     style="padding:8px 16px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+     class="inline-flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 ring-1 ring-inset ring-red-400/20 transition-colors hover:bg-red-500/20">
     Dependency Graph
   </a>
 </div>`;
@@ -139,7 +139,7 @@ export function projectPage(data: ProjectPageData): string {
   });
 
   const content =
-    `<h1 class="page-title">${escapeHtml(project.name)}</h1>` +
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">${escapeHtml(project.name)}</h2>` +
     stats +
     details +
     actionButtons(project) +
@@ -167,27 +167,27 @@ export function projectFragment(data: ProjectPageData): string {
   });
 
   return (
-    `<h1 class="page-title">${escapeHtml(project.name)}</h1>` +
-    `<div class="stat-row">
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">${escapeHtml(project.name)}</h2>` +
+    `<div class="flex gap-4 flex-wrap mb-6">
       ${statCard("Files", project.totalFiles ?? 0)}
       ${statCard("Symbols", project.totalSymbols ?? 0)}
       ${statCard("Findings", findingsCount)}
     </div>` +
     actionButtons(project) +
     progress +
-    `<div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+    `<div class="flex gap-3 mt-4 flex-wrap">
       <a href="/projects/${project.id}/files"
          hx-get="/projects/${project.id}/files"
          hx-target="#main-content"
          hx-push-url="true"
-         style="padding:8px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+         class="inline-flex items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 ring-1 ring-inset ring-blue-400/20 transition-colors hover:bg-blue-500/20">
         Browse Files
       </a>
       <a href="/projects/${project.id}/findings"
          hx-get="/projects/${project.id}/findings"
          hx-target="#main-content"
          hx-push-url="true"
-         style="padding:8px 16px;background:#7c3aed;color:#fff;border-radius:6px;text-decoration:none;font-size:0.875rem;">
+         class="inline-flex items-center gap-2 rounded-lg bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 ring-1 ring-inset ring-purple-400/20 transition-colors hover:bg-purple-500/20">
         View Findings
       </a>
     </div>`

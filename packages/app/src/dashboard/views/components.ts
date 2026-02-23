@@ -1,7 +1,8 @@
 /**
  * Reusable HTML-generating component functions for the dashboard.
  *
- * All functions return raw HTML strings. No template engine needed.
+ * All functions return raw HTML strings.
+ * Styled with Tailwind CSS (dark slate theme, purple accent).
  */
 
 // ---------------------------------------------------------------------------
@@ -27,29 +28,29 @@ export function escapeHtml(str: string): string {
 
 export type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral";
 
-const BADGE_COLORS: Record<BadgeVariant, string> = {
-  success: "background:#dcfce7;color:#166534;",
-  warning: "background:#fef3c7;color:#92400e;",
-  danger: "background:#fee2e2;color:#991b1b;",
-  info: "background:#dbeafe;color:#1e40af;",
-  neutral: "background:#f3f4f6;color:#374151;",
+const BADGE_CLASSES: Record<BadgeVariant, string> = {
+  success: "bg-emerald-400/10 text-emerald-400 ring-emerald-400/20",
+  warning: "bg-amber-400/10 text-amber-400 ring-amber-400/20",
+  danger: "bg-red-400/10 text-red-400 ring-red-400/20",
+  info: "bg-blue-400/10 text-blue-400 ring-blue-400/20",
+  neutral: "bg-slate-400/10 text-slate-400 ring-slate-400/20",
 };
 
-/** Render an inline badge. */
+/** Render an inline badge pill. */
 export function badge(text: string, variant: BadgeVariant = "neutral"): string {
-  const style = BADGE_COLORS[variant];
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:0.75rem;font-weight:600;${style}">${escapeHtml(text)}</span>`;
+  const cls = BADGE_CLASSES[variant];
+  return `<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}">${escapeHtml(text)}</span>`;
 }
 
 // ---------------------------------------------------------------------------
 // Card
 // ---------------------------------------------------------------------------
 
-/** Render a card container. */
+/** Render a card container with an optional title. */
 export function card(title: string, body: string): string {
   return `
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
-  <h3 style="margin:0 0 8px 0;font-size:1rem;font-weight:600;color:#111827;">${escapeHtml(title)}</h3>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-4">
+  <h3 class="text-base font-semibold text-slate-50 mb-3">${escapeHtml(title)}</h3>
   <div>${body}</div>
 </div>`;
 }
@@ -61,9 +62,9 @@ export function card(title: string, body: string): string {
 /** Render a stat card with a label and value. */
 export function statCard(label: string, value: string | number): string {
   return `
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;min-width:120px;">
-  <div style="font-size:1.5rem;font-weight:700;color:#111827;">${escapeHtml(String(value))}</div>
-  <div style="font-size:0.75rem;color:#6b7280;margin-top:4px;">${escapeHtml(label)}</div>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-5 text-center min-w-[120px]">
+  <div class="text-2xl font-semibold text-slate-50">${escapeHtml(String(value))}</div>
+  <div class="mt-1 text-xs text-slate-400">${escapeHtml(label)}</div>
 </div>`;
 }
 
@@ -86,22 +87,31 @@ export function table<T>(columns: TableColumn<T>[], rows: T[]): string {
   const headerCells = columns
     .map(
       (col) =>
-        `<th style="padding:8px 12px;text-align:${col.align ?? "left"};border-bottom:2px solid #e5e7eb;font-size:0.75rem;font-weight:600;color:#6b7280;text-transform:uppercase;">${escapeHtml(col.header)}</th>`,
+        `<th class="px-4 py-3 text-${col.align ?? "left"} text-xs font-medium uppercase tracking-wider text-slate-400">${escapeHtml(col.header)}</th>`,
     )
     .join("");
 
   const bodyRows = rows
     .map(
       (row) =>
-        `<tr style="border-bottom:1px solid #f3f4f6;">${columns.map((col) => `<td style="padding:8px 12px;text-align:${col.align ?? "left"};font-size:0.875rem;">${col.render(row)}</td>`).join("")}</tr>`,
+        `<tr class="hover:bg-slate-800/50">${columns
+          .map(
+            (col) =>
+              `<td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300 text-${col.align ?? "left"}">${col.render(row)}</td>`,
+          )
+          .join("")}</tr>`,
     )
     .join("");
 
   return `
-<table style="width:100%;border-collapse:collapse;">
-  <thead><tr>${headerCells}</tr></thead>
-  <tbody>${bodyRows}</tbody>
-</table>`;
+<div class="overflow-x-auto">
+  <table class="min-w-full divide-y divide-slate-700">
+    <thead class="bg-slate-800/50">
+      <tr>${headerCells}</tr>
+    </thead>
+    <tbody class="divide-y divide-slate-700">${bodyRows}</tbody>
+  </table>
+</div>`;
 }
 
 // ---------------------------------------------------------------------------

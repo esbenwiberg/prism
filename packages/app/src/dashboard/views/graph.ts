@@ -25,28 +25,26 @@ export interface GraphPageData {
 export function graphPage(data: GraphPageData): string {
   const { projectId, projectName, userName } = data;
 
-  const breadcrumb = `
-<div style="margin-bottom:16px;font-size:0.875rem;">
+  const breadcrumb = `<div class="mb-4 flex items-center gap-1.5 text-sm">
   <a href="/projects/${projectId}"
      hx-get="/projects/${projectId}"
      hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Dependency Graph</span>
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  <span class="text-slate-400">Dependency Graph</span>
 </div>`;
 
   const content =
     breadcrumb +
-    `<h1 class="page-title">Dependency Graph</h1>` +
-    `<div id="graph-container" style="width:100%;height:600px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;position:relative;overflow:hidden;">
-      <div id="graph-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#6b7280;">
+    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Dependency Graph</h2>` +
+    `<div id="graph-container" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
+      <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
         Loading graph data...
       </div>
-      <svg id="graph-svg" style="width:100%;height:100%;"></svg>
+      <svg id="graph-svg" class="w-full h-full"></svg>
     </div>
-    <div style="margin-top:8px;font-size:0.75rem;color:#9ca3af;">
-      Drag nodes to reposition. Scroll to zoom. Click a node to see details.
-    </div>
+    <p class="mt-2 text-xs text-slate-500">Drag nodes to reposition. Scroll to zoom. Click a node to see details.</p>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="/public/graph.js"></script>
     <script>
@@ -69,22 +67,23 @@ export function graphPage(data: GraphPageData): string {
 export function graphFragment(data: GraphPageData): string {
   const { projectId, projectName } = data;
 
-  return `
-<div style="margin-bottom:16px;font-size:0.875rem;">
+  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
   <a href="/projects/${projectId}"
      hx-get="/projects/${projectId}"
      hx-target="#main-content"
-     hx-push-url="true">${escapeHtml(projectName)}</a>
-  <span style="color:#9ca3af;"> / </span>
-  <span style="color:#6b7280;">Dependency Graph</span>
+     hx-push-url="true"
+     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
+  <span class="text-slate-600">/</span>
+  <span class="text-slate-400">Dependency Graph</span>
 </div>
-<h1 class="page-title">Dependency Graph</h1>
-<div id="graph-container" style="width:100%;height:600px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;position:relative;overflow:hidden;">
-  <div id="graph-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#6b7280;">
+<h2 class="text-2xl font-bold text-slate-50 mb-6">Dependency Graph</h2>
+<div id="graph-container" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
+  <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
     Loading graph data...
   </div>
-  <svg id="graph-svg" style="width:100%;height:100%;"></svg>
+  <svg id="graph-svg" class="w-full h-full"></svg>
 </div>
+<p class="mt-2 text-xs text-slate-500">Drag nodes to reposition. Scroll to zoom. Click a node to see details.</p>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="/public/graph.js"></script>
 <script>
