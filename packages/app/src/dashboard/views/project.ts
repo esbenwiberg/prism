@@ -130,6 +130,27 @@ export function projectPage(data: ProjectPageData): string {
      class="inline-flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 ring-1 ring-inset ring-red-400/20 transition-colors hover:bg-red-500/20">
     Dependency Graph
   </a>
+  <a href="/projects/${project.id}/symbols"
+     hx-get="/projects/${project.id}/symbols"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 ring-1 ring-inset ring-amber-400/20 transition-colors hover:bg-amber-500/20">
+    Symbols
+  </a>
+  <a href="/projects/${project.id}/purpose"
+     hx-get="/projects/${project.id}/purpose"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="inline-flex items-center gap-2 rounded-lg bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-400 ring-1 ring-inset ring-teal-400/20 transition-colors hover:bg-teal-500/20">
+    Purpose
+  </a>
+  <a href="/projects/${project.id}/summaries"
+     hx-get="/projects/${project.id}/summaries"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
+    Summaries
+  </a>
 </div>`;
 
   const progress = jobProgressFragment({
@@ -189,6 +210,27 @@ export function projectFragment(data: ProjectPageData): string {
          hx-push-url="true"
          class="inline-flex items-center gap-2 rounded-lg bg-purple-500/10 px-4 py-2 text-sm font-medium text-purple-400 ring-1 ring-inset ring-purple-400/20 transition-colors hover:bg-purple-500/20">
         View Findings
+      </a>
+      <a href="/projects/${project.id}/symbols"
+         hx-get="/projects/${project.id}/symbols"
+         hx-target="#main-content"
+         hx-push-url="true"
+         class="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 ring-1 ring-inset ring-amber-400/20 transition-colors hover:bg-amber-500/20">
+        Symbols
+      </a>
+      <a href="/projects/${project.id}/purpose"
+         hx-get="/projects/${project.id}/purpose"
+         hx-target="#main-content"
+         hx-push-url="true"
+         class="inline-flex items-center gap-2 rounded-lg bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-400 ring-1 ring-inset ring-teal-400/20 transition-colors hover:bg-teal-500/20">
+        Purpose
+      </a>
+      <a href="/projects/${project.id}/summaries"
+         hx-get="/projects/${project.id}/summaries"
+         hx-target="#main-content"
+         hx-push-url="true"
+         class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
+        Summaries
       </a>
     </div>`
   );

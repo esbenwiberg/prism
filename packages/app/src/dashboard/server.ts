@@ -25,6 +25,9 @@ import logsRouter from "./routes/logs.js";
 import healthRouter from "./routes/health.js";
 import settingsRouter from "./routes/settings.js";
 import promptsRouter from "./routes/prompts.js";
+import { symbolsRouter } from "./routes/symbols.js";
+import { purposeRouter } from "./routes/purpose.js";
+import { summariesRouter } from "./routes/summaries.js";
 
 /**
  * Create and configure the Express application.
@@ -120,6 +123,9 @@ export function createApp(): express.Express {
   app.use(healthRouter);
   app.use(settingsRouter);
   app.use(promptsRouter);
+  app.use(symbolsRouter);
+  app.use(purposeRouter);
+  app.use(summariesRouter);
 
   return app;
 }

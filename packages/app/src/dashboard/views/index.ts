@@ -93,3 +93,23 @@ export {
   type SettingsTab,
 } from "./settings.js";
 export { promptsPage, promptEditorPartial } from "./prompts.js";
+
+export {
+  symbolsPage,
+  symbolsFragment,
+  type SymbolViewData,
+  type SymbolsPageData,
+} from "./symbols.js";
+
+export {
+  purposePage,
+  purposeFragment,
+  type PurposePageData,
+} from "./purpose.js";
+
+export {
+  summariesPage,
+  summariesFragment,
+  type SummaryViewData,
+  type SummariesPageData,
+} from "./summaries.js";
