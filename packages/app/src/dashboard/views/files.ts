@@ -7,6 +7,7 @@ import {
   escapeHtml,
   badge,
   table,
+  projectTabNav,
   type TableColumn,
   type BadgeVariant,
 } from "./components.js";
@@ -60,17 +61,6 @@ function fileTypeBadges(file: FileViewData): string {
   return badges.join(" ");
 }
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Files</span>
-</div>`;
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -122,8 +112,8 @@ export function filesPage(data: FilesPageData): string {
   </div>`;
 
   const content =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Files (${files.length})</h2>` +
+    projectTabNav(projectId, projectName, "files") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Files (${files.length})</h2>` +
     (files.length > 0 ? table(columns, files) : emptyState);
 
   return layout({
@@ -163,8 +153,8 @@ export function filesFragment(data: FilesPageData): string {
   ];
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Files (${files.length})</h2>` +
+    projectTabNav(projectId, projectName, "files") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Files (${files.length})</h2>` +
     table(columns, files)
   );
 }

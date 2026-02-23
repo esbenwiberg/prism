@@ -6,7 +6,7 @@
  */
 
 import { layout } from "./layout.js";
-import { escapeHtml, card } from "./components.js";
+import { escapeHtml, card, projectTabNav } from "./components.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,17 +24,6 @@ export interface PurposePageData {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Purpose</span>
-</div>`;
-}
 
 /**
  * Split a markdown document on ## headings, returning an array of
@@ -94,8 +83,8 @@ export function purposePage(data: PurposePageData): string {
   const body = content ? renderSections(content) : emptyState;
 
   const pageContent =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Purpose</h2>` +
+    projectTabNav(projectId, projectName, "purpose") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Purpose</h2>` +
     body;
 
   return layout({
@@ -119,8 +108,8 @@ export function purposeFragment(data: PurposePageData): string {
   const body = content ? renderSections(content) : emptyState;
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Purpose</h2>` +
+    projectTabNav(projectId, projectName, "purpose") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Purpose</h2>` +
     body
   );
 }

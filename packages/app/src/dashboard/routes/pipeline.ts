@@ -9,9 +9,14 @@ import {
   type IndexRunRow,
 } from "@prism/core";
 import type { LayerName } from "@prism/core";
-import { pipelinePage, pipelineFragment, type LayerRunData } from "../views/pipeline.js";
+import { pipelinePage, pipelineFragment, pipelineInfoPage, type LayerRunData } from "../views/pipeline.js";
 
 export const pipelineRouter = Router();
+
+pipelineRouter.get("/pipeline", (req, res) => {
+  const userName = req.session.user?.name ?? "User";
+  res.send(pipelineInfoPage(userName));
+});
 
 pipelineRouter.get("/projects/:id/pipeline", async (req, res) => {
   const id = parseInt(req.params.id, 10);

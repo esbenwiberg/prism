@@ -133,18 +133,6 @@ function buildLayers(projectId: number): LayerDef[] {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-6 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Pipeline</span>
-</div>`;
-}
-
 function formatDuration(ms: number | null): string {
   if (ms === null) return "—";
   if (ms < 1000) return `${ms} ms`;
@@ -251,7 +239,7 @@ const CONNECTOR = `
 // ---------------------------------------------------------------------------
 
 function buildContent(data: PipelinePageData): string {
-  const { projectId, projectName, layerRuns } = data;
+  const { projectId, layerRuns } = data;
   const layers = buildLayers(projectId);
 
   const cards = layers
@@ -262,13 +250,35 @@ function buildContent(data: PipelinePageData): string {
     .join("");
 
   return (
-    breadcrumb(projectId, projectName) +
     `<div class="mb-6">
       <h2 class="text-2xl font-bold text-slate-50">Indexing Pipeline</h2>
       <p class="mt-1 text-sm text-slate-400">
         Prism indexes codebases through a sequential pipeline. Each layer builds on the previous one —
         run <code class="font-mono text-xs bg-slate-800 px-1 py-0.5 rounded">prism index</code> to execute
         layers 1–4; blueprints are generated on demand.
+      </p>
+    </div>` +
+    `<div class="max-w-3xl">${cards}</div>`
+  );
+}
+
+function buildInfoContent(): string {
+  const layers = buildLayers(0).map((l) => ({ ...l, links: [] }));
+
+  const cards = layers
+    .map((def, i) => {
+      const card = layerCard(def, undefined);
+      return i < layers.length - 1 ? card + CONNECTOR : card;
+    })
+    .join("");
+
+  return (
+    `<div class="mb-6">
+      <h2 class="text-2xl font-bold text-slate-50">Indexing Pipeline</h2>
+      <p class="mt-1 text-sm text-slate-400">
+        Prism indexes codebases through a sequential five-layer pipeline. Each layer builds on the
+        previous one — run <code class="font-mono text-xs bg-slate-800 px-1 py-0.5 rounded">prism index</code> to
+        execute layers 1–4; blueprints are generated on demand.
       </p>
     </div>` +
     `<div class="max-w-3xl">${cards}</div>`
@@ -290,4 +300,13 @@ export function pipelinePage(data: PipelinePageData): string {
 
 export function pipelineFragment(data: PipelinePageData): string {
   return buildContent(data);
+}
+
+export function pipelineInfoPage(userName: string): string {
+  return layout({
+    title: "Pipeline",
+    content: buildInfoContent(),
+    userName,
+    activeNav: "pipeline",
+  });
 }

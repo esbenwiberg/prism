@@ -4,7 +4,7 @@
 
 import type { Project, JobRow, IndexRunRow } from "@prism/core";
 import { layout } from "./layout.js";
-import { escapeHtml, statCard, statusBadge } from "./components.js";
+import { escapeHtml, statCard, statusBadge, projectTabNav } from "./components.js";
 import { jobProgressFragment } from "./job-progress.js";
 
 export interface ProjectPageData {
@@ -93,21 +93,6 @@ export function projectPage(data: ProjectPageData): string {
   <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toISOString())}</p>
 </div>`;
 
-  const tabClass = "border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-slate-400 whitespace-nowrap transition-colors hover:border-slate-500 hover:text-slate-200";
-  const nav = `
-<div class="border-b border-slate-700 mb-6">
-  <nav class="-mb-px flex gap-1 overflow-x-auto">
-    <a href="/projects/${project.id}/files" hx-get="/projects/${project.id}/files" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Browse Files</a>
-    <a href="/projects/${project.id}/modules" hx-get="/projects/${project.id}/modules" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Modules</a>
-    <a href="/projects/${project.id}/findings" hx-get="/projects/${project.id}/findings" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Findings</a>
-    <a href="/projects/${project.id}/blueprints" hx-get="/projects/${project.id}/blueprints" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Blueprints</a>
-    <a href="/projects/${project.id}/graph" hx-get="/projects/${project.id}/graph" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Dependency Graph</a>
-    <a href="/projects/${project.id}/symbols" hx-get="/projects/${project.id}/symbols" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Symbols</a>
-    <a href="/projects/${project.id}/purpose" hx-get="/projects/${project.id}/purpose" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Purpose</a>
-    <a href="/projects/${project.id}/summaries" hx-get="/projects/${project.id}/summaries" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Summaries</a>
-    <a href="/projects/${project.id}/pipeline" hx-get="/projects/${project.id}/pipeline" hx-target="#main-content" hx-push-url="true" class="${tabClass}">Pipeline</a>
-  </nav>
-</div>`;
 
   const progress = jobProgressFragment({
     projectId: project.id,
@@ -116,8 +101,7 @@ export function projectPage(data: ProjectPageData): string {
   });
 
   const content =
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">${escapeHtml(project.name)}</h2>` +
-    nav +
+    projectTabNav(project.id, project.name, "overview") +
     stats +
     details +
     actionButtons(project) +
@@ -143,24 +127,8 @@ export function projectFragment(data: ProjectPageData): string {
     indexRuns: indexRuns ?? [],
   });
 
-  const tabCls = "border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-slate-400 whitespace-nowrap transition-colors hover:border-slate-500 hover:text-slate-200";
-  const fragNav = `<div class="border-b border-slate-700 mb-6">
-    <nav class="-mb-px flex gap-1 overflow-x-auto">
-      <a href="/projects/${project.id}/files" hx-get="/projects/${project.id}/files" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Browse Files</a>
-      <a href="/projects/${project.id}/modules" hx-get="/projects/${project.id}/modules" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Modules</a>
-      <a href="/projects/${project.id}/findings" hx-get="/projects/${project.id}/findings" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Findings</a>
-      <a href="/projects/${project.id}/blueprints" hx-get="/projects/${project.id}/blueprints" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Blueprints</a>
-      <a href="/projects/${project.id}/graph" hx-get="/projects/${project.id}/graph" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Dependency Graph</a>
-      <a href="/projects/${project.id}/symbols" hx-get="/projects/${project.id}/symbols" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Symbols</a>
-      <a href="/projects/${project.id}/purpose" hx-get="/projects/${project.id}/purpose" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Purpose</a>
-      <a href="/projects/${project.id}/summaries" hx-get="/projects/${project.id}/summaries" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Summaries</a>
-      <a href="/projects/${project.id}/pipeline" hx-get="/projects/${project.id}/pipeline" hx-target="#main-content" hx-push-url="true" class="${tabCls}">Pipeline</a>
-    </nav>
-  </div>`;
-
   return (
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">${escapeHtml(project.name)}</h2>` +
-    fragNav +
+    projectTabNav(project.id, project.name, "overview") +
     `<div class="flex gap-4 flex-wrap mb-6">
       ${statCard("Files", project.totalFiles ?? 0)}
       ${statCard("Symbols", project.totalSymbols ?? 0)}

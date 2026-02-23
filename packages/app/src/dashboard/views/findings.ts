@@ -8,6 +8,7 @@ import {
   severityBadge,
   badge,
   table,
+  projectTabNav,
   type TableColumn,
 } from "./components.js";
 
@@ -66,17 +67,6 @@ function filterBar(projectId: number, activeFilter: string): string {
 // Breadcrumb
 // ---------------------------------------------------------------------------
 
-function breadcrumb(projectId: number, projectName: string, extra?: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  ${extra ? `<a href="/projects/${projectId}/findings" hx-get="/projects/${projectId}/findings" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300">Findings</a><span class="text-slate-600">/</span><span class="text-slate-400">${extra}</span>` : `<span class="text-slate-400">Findings</span>`}
-</div>`;
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -128,8 +118,8 @@ export function findingsPage(data: FindingsPageData): string {
   </div>`;
 
   const content =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
+    projectTabNav(projectId, projectName, "findings") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
     filterBar(projectId, severityFilter) +
     (findings.length > 0 ? table(columns, findings) : emptyState);
 
@@ -164,8 +154,8 @@ export function findingsFragment(data: FindingsPageData): string {
   ];
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
+    projectTabNav(projectId, projectName, "findings") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Findings (${findings.length})</h2>` +
     filterBar(projectId, severityFilter) +
     table(columns, findings)
   );

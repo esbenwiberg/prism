@@ -11,6 +11,7 @@ import {
   badge,
   statCard,
   table,
+  projectTabNav,
   type TableColumn,
   type BadgeVariant,
 } from "./components.js";
@@ -63,17 +64,6 @@ function complexityBadge(complexity: string | null): string {
   return badge(complexity, variant);
 }
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Symbols</span>
-</div>`;
-}
 
 const KINDS = ["all", "function", "class", "interface", "type", "enum", "export", "import"];
 
@@ -147,8 +137,8 @@ export function symbolsPage(data: SymbolsPageData): string {
   </div>`;
 
   const content =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Symbols (${symbols.length})</h2>` +
+    projectTabNav(projectId, projectName, "symbols") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Symbols (${symbols.length})</h2>` +
     stats +
     filterBar(projectId, kindFilter) +
     (symbols.length > 0 ? table(COLUMNS, symbols) : emptyState);
@@ -200,8 +190,8 @@ export function symbolsFragment(data: SymbolsPageData): string {
   ];
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Symbols (${symbols.length})</h2>` +
+    projectTabNav(projectId, projectName, "symbols") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Symbols (${symbols.length})</h2>` +
     filterBar(projectId, kindFilter) +
     (symbols.length > 0 ? table(fragmentColumns, symbols) : emptyState)
   );

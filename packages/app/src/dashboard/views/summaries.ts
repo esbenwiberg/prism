@@ -11,6 +11,7 @@ import {
   badge,
   statCard,
   table,
+  projectTabNav,
   type TableColumn,
 } from "./components.js";
 
@@ -39,17 +40,6 @@ export interface SummariesPageData {
 
 const LEVELS = ["function", "file", "module", "system"];
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Summaries</span>
-</div>`;
-}
 
 function filterBar(projectId: number, activeLevel: string): string {
   const buttons = LEVELS.map((lvl) => {
@@ -113,8 +103,8 @@ export function summariesPage(data: SummariesPageData): string {
   </div>`;
 
   const content =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Summaries</h2>` +
+    projectTabNav(projectId, projectName, "summaries") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Summaries</h2>` +
     stats +
     filterBar(projectId, levelFilter) +
     (summaries.length > 0 ? table(COLUMNS, summaries) : emptyState);
@@ -161,8 +151,8 @@ export function summariesFragment(data: SummariesPageData): string {
   ];
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-4">Summaries</h2>` +
+    projectTabNav(projectId, projectName, "summaries") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-4">Summaries</h2>` +
     filterBar(projectId, levelFilter) +
     (summaries.length > 0 ? table(fragmentColumns, summaries) : emptyState)
   );

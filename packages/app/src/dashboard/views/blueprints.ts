@@ -3,7 +3,7 @@
  */
 
 import { layout } from "./layout.js";
-import { escapeHtml, card, badge, type BadgeVariant } from "./components.js";
+import { escapeHtml, card, badge, projectTabNav, type BadgeVariant } from "./components.js";
 import type { Risk } from "../../blueprint/types.js";
 
 // ---------------------------------------------------------------------------
@@ -110,8 +110,8 @@ export function blueprintsListFragment(data: BlueprintsListPageData): string {
 function blueprintsListContent(data: BlueprintsListPageData): string {
   const { projectId, projectName, plans } = data;
 
-  let html = breadcrumb(projectId, projectName, "Blueprints") +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Blueprints (${plans.length})</h2>`;
+  let html = projectTabNav(projectId, projectName, "blueprints") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Blueprints (${plans.length})</h2>`;
 
   if (plans.length === 0) {
     html += `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
@@ -181,9 +181,10 @@ function blueprintDetailContent(data: BlueprintDetailPageData): string {
 
   const totalMilestones = phases.reduce((n, p) => n + p.milestones.length, 0);
 
-  let html = breadcrumb(projectId, projectName, "Blueprints", plan.title, projectId) + `
+  let html = projectTabNav(projectId, projectName, "blueprints") +
+    `<a href="/projects/${projectId}/blueprints" hx-get="/projects/${projectId}/blueprints" hx-target="#main-content" hx-push-url="true" class="inline-flex items-center gap-1 text-sm text-purple-400 hover:text-purple-300 mb-4">&#8592; All Blueprints</a>` + `
 <div class="flex justify-between items-center mb-6">
-  <h2 class="text-2xl font-bold text-slate-50">${escapeHtml(plan.title)}</h2>
+  <h2 class="text-xl font-semibold text-slate-50">${escapeHtml(plan.title)}</h2>
   <div class="relative export-dropdown">
     <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'"
        class="inline-flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-600 hover:text-slate-50">

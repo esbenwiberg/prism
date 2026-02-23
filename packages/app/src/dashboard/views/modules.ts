@@ -3,7 +3,7 @@
  */
 
 import { layout } from "./layout.js";
-import { escapeHtml, statCard, badge, table, type TableColumn } from "./components.js";
+import { escapeHtml, statCard, badge, table, projectTabNav, type TableColumn } from "./components.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,17 +28,6 @@ export interface ModulesPageData {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function breadcrumb(projectId: number, projectName: string): string {
-  return `<div class="mb-4 flex items-center gap-1.5 text-sm">
-  <a href="/projects/${projectId}"
-     hx-get="/projects/${projectId}"
-     hx-target="#main-content"
-     hx-push-url="true"
-     class="text-purple-400 hover:text-purple-300">${escapeHtml(projectName)}</a>
-  <span class="text-slate-600">/</span>
-  <span class="text-slate-400">Modules</span>
-</div>`;
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -98,8 +87,8 @@ export function modulesPage(data: ModulesPageData): string {
   </div>`;
 
   const content =
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
+    projectTabNav(projectId, projectName, "modules") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
     stats +
     (modules.length > 0 ? table(columns, modules) : emptyState);
 
@@ -138,8 +127,8 @@ export function modulesFragment(data: ModulesPageData): string {
   ];
 
   return (
-    breadcrumb(projectId, projectName) +
-    `<h2 class="text-2xl font-bold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
+    projectTabNav(projectId, projectName, "modules") +
+    `<h2 class="text-xl font-semibold text-slate-50 mb-6">Modules (${modules.length})</h2>` +
     table(columns, modules)
   );
 }

@@ -28,6 +28,7 @@ import promptsRouter from "./routes/prompts.js";
 import { symbolsRouter } from "./routes/symbols.js";
 import { purposeRouter } from "./routes/purpose.js";
 import { summariesRouter } from "./routes/summaries.js";
+import { pipelineRouter } from "./routes/pipeline.js";
 
 /**
  * Create and configure the Express application.
@@ -126,6 +127,7 @@ export function createApp(): express.Express {
   app.use(symbolsRouter);
   app.use(purposeRouter);
   app.use(summariesRouter);
+  app.use(pipelineRouter);
 
   return app;
 }

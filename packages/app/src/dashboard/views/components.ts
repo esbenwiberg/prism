@@ -274,3 +274,48 @@ export function statusBadge(status: string): string {
   };
   return badge(status, map[status] ?? "neutral");
 }
+
+// ---------------------------------------------------------------------------
+// Project tab navigation
+// ---------------------------------------------------------------------------
+
+const PROJECT_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "files", label: "Browse Files" },
+  { key: "modules", label: "Modules" },
+  { key: "findings", label: "Findings" },
+  { key: "blueprints", label: "Blueprints" },
+  { key: "graph", label: "Dependency Graph" },
+  { key: "symbols", label: "Symbols" },
+  { key: "purpose", label: "Purpose" },
+  { key: "summaries", label: "Summaries" },
+] as const;
+
+export type ProjectTabKey = typeof PROJECT_TABS[number]["key"];
+
+/**
+ * Render the project name heading + tab row.
+ * Embed at the top of every project page and sub-page fragment.
+ */
+export function projectTabNav(
+  projectId: number,
+  projectName: string,
+  activeTab: ProjectTabKey,
+): string {
+  const tabs = PROJECT_TABS.map(({ key, label }) => {
+    const href =
+      key === "overview"
+        ? `/projects/${projectId}`
+        : `/projects/${projectId}/${key}`;
+    const isActive = key === activeTab;
+    const cls = isActive
+      ? "border-b-2 border-purple-400 px-4 py-2.5 text-sm font-medium text-slate-50 whitespace-nowrap"
+      : "border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-slate-400 whitespace-nowrap transition-colors hover:border-slate-500 hover:text-slate-200";
+    return `<a href="${href}" hx-get="${href}" hx-target="#main-content" hx-push-url="true" class="${cls}">${escapeHtml(label)}</a>`;
+  }).join("");
+
+  return `<h2 class="text-2xl font-bold text-slate-50 mb-4">${escapeHtml(projectName)}</h2>
+<div class="border-b border-slate-700 mb-6">
+  <nav class="-mb-px flex gap-1 overflow-x-auto">${tabs}</nav>
+</div>`;
+}
