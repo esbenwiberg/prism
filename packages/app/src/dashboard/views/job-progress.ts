@@ -212,7 +212,19 @@ export function jobProgressFragment(data: JobProgressData): string {
       </div>`
     : "";
 
-  const layerOrder = INDEX_LAYER_ORDER;
+  const blueprintLinkHtml = latestJob.type === "blueprint" && latestJob.status === "completed"
+    ? `<div class="mt-3">
+        <a href="/projects/${projectId}/blueprints"
+           hx-get="/projects/${projectId}/blueprints"
+           hx-target="#main-content"
+           hx-push-url="true"
+           class="inline-flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300">
+          View Blueprints &#8594;
+        </a>
+      </div>`
+    : "";
+
+  const layerOrder = latestJob.type === "blueprint" ? BLUEPRINT_LAYER_ORDER : INDEX_LAYER_ORDER;
   const layers = layerOrder.map((layer) =>
     layerRow(layer, byLayer.get(layer), isActive, LAYER_UNIT[layer] ?? "files"),
   ).join("");
@@ -234,6 +246,7 @@ export function jobProgressFragment(data: JobProgressData): string {
       ${layers}
     </div>
     ${errorHtml}
+    ${blueprintLinkHtml}
   </div>
 </div>`;
 }

@@ -212,11 +212,9 @@ async function executeBlueprintJob(
     );
 
     if (!result) {
-      logger.warn(
-        { projectId },
-        "Blueprint generation produced no result — ensure the project has been analysed first",
+      throw new Error(
+        "Blueprint generation produced no output. Make sure the project has been fully indexed (layers 1–4) before generating blueprints.",
       );
-      return;
     }
 
     const totalPhases = result.phases.length;
