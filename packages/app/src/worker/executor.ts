@@ -17,6 +17,10 @@ import {
   runPipeline,
   initConfig,
   createBudgetTracker,
+  createIndexRun,
+  updateIndexRunProgress,
+  completeIndexRun,
+  failIndexRun,
   type JobRow,
   type JobOptions,
   type GitProvider,
@@ -182,19 +186,48 @@ async function executeBlueprintJob(
 
   const config = initConfig();
   const budget = createBudgetTracker(config.blueprint.budgetUsd);
+  const startTime = Date.now();
 
-  const result = await generateHierarchicalBlueprint(
-    projectId,
-    project.name,
-    config.blueprint,
-    budget,
-    { goal: options.goal, focus: options.focus },
-  );
+  // Index run created once we know total phases (after pass 1)
+  let runId: number | undefined;
 
-  if (!result) {
-    logger.warn(
-      { projectId },
-      "Blueprint generation produced no result — ensure the project has been analysed first",
+  const onProgress = async (phasesComplete: number, totalPhases: number) => {
+    if (runId === undefined) {
+      // First call — now we know the phase count, create the run
+      const run = await createIndexRun(projectId, "blueprint", totalPhases);
+      runId = run.id;
+    } else {
+      await updateIndexRunProgress(runId, phasesComplete);
+    }
+  };
+
+  try {
+    const result = await generateHierarchicalBlueprint(
+      projectId,
+      project.name,
+      config.blueprint,
+      budget,
+      { goal: options.goal, focus: options.focus },
+      onProgress,
     );
+
+    if (!result) {
+      logger.warn(
+        { projectId },
+        "Blueprint generation produced no result — ensure the project has been analysed first",
+      );
+      return;
+    }
+
+    const totalPhases = result.phases.length;
+    if (runId !== undefined) {
+      await completeIndexRun(runId, totalPhases, Date.now() - startTime, budget.spentUsd);
+    }
+  } catch (err) {
+    if (runId !== undefined) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await failIndexRun(runId, msg, 0, Date.now() - startTime);
+    }
+    throw err;
   }
 }

@@ -125,6 +125,9 @@ export function layout(options: LayoutOptions): string {
   <!-- htmx -->
   <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
   <script src="/public/htmx-ext.js" defer></script>
+
+  <!-- D3 (used by the dependency graph page) -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-50 font-sans">
 

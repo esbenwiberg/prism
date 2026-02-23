@@ -5,7 +5,6 @@
  * with the project ID to fetch graph data from the API.
  */
 
-// eslint-disable-next-line no-unused-vars
 function renderDependencyGraph(projectId) {
   const container = document.getElementById("graph-container");
   const svg = d3.select("#graph-svg");
@@ -195,6 +194,26 @@ function renderGraph(svg, data, width, height) {
       .attr("y", (d) => d.y);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Auto-init
+// ---------------------------------------------------------------------------
+
+function initGraph() {
+  const container = document.getElementById("graph-container");
+  if (!container) return;
+  const projectId = parseInt(container.dataset.projectId, 10);
+  if (isNaN(projectId)) return;
+  // Avoid double-rendering if already initialised
+  if (container.dataset.graphInit === "true") return;
+  container.dataset.graphInit = "true";
+  renderDependencyGraph(projectId);
+}
+
+// Direct page load
+document.addEventListener("DOMContentLoaded", initGraph);
+// HTMX partial navigation
+document.addEventListener("htmx:afterSwap", initGraph);
 
 function drag(simulation) {
   function dragstarted(event) {

@@ -25,7 +25,8 @@ export interface JobProgressData {
 // Constants
 // ---------------------------------------------------------------------------
 
-const LAYER_ORDER = ["structural", "docs", "semantic", "analysis", "blueprint"] as const;
+const INDEX_LAYER_ORDER = ["structural", "docs", "semantic", "analysis", "blueprint"] as const;
+const BLUEPRINT_LAYER_ORDER = ["blueprint"] as const;
 
 const LAYER_LABELS: Record<string, string> = {
   structural: "Structural",
@@ -33,6 +34,11 @@ const LAYER_LABELS: Record<string, string> = {
   semantic: "Semantic",
   analysis: "Analysis",
   blueprint: "Blueprint",
+};
+
+/** For blueprint jobs, "files processed" means phases completed. */
+const LAYER_UNIT: Record<string, string> = {
+  blueprint: "phases",
 };
 
 // ---------------------------------------------------------------------------
@@ -54,7 +60,7 @@ function formatCost(costUsd: string | null | undefined): string {
 }
 
 /** Render a single layer row. */
-function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean): string {
+function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean, unit = "files"): string {
   const label = LAYER_LABELS[layer] ?? layer;
 
   if (!run) {
@@ -100,13 +106,13 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
 
   let progressText = "";
   if (filesTotal != null && filesTotal > 0) {
-    progressText = `<span class="text-xs text-slate-400 font-mono w-20">${filesProcessed} / ${filesTotal}</span>`;
+    progressText = `<span class="text-xs text-slate-400 font-mono w-24">${filesProcessed} / ${filesTotal} ${unit}</span>`;
   } else if (filesProcessed != null && filesProcessed > 0) {
-    progressText = `<span class="text-xs text-slate-400 font-mono w-20">${filesProcessed}</span>`;
+    progressText = `<span class="text-xs text-slate-400 font-mono w-24">${filesProcessed} ${unit}</span>`;
   } else if (status === "running") {
-    progressText = `<span class="text-xs text-slate-500 w-20">running…</span>`;
+    progressText = `<span class="text-xs text-slate-500 w-24">running…</span>`;
   } else {
-    progressText = `<span class="text-xs text-slate-600 w-20">—</span>`;
+    progressText = `<span class="text-xs text-slate-600 w-24">—</span>`;
   }
 
   let durationText = "";
@@ -128,13 +134,18 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
     </div>`;
   }
 
+  const rowWrap = status === "running"
+    ? `class="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 -mx-2"`
+    : `class=""`;
+
   return `
-  <div>
+  <div ${rowWrap}>
     <div class="flex items-center gap-3 py-2">
       ${icon}
       <span class="${labelClass}">${escapeHtml(label)}</span>
       ${progressText}
       ${durationText}
+      ${status === "running" ? `<span class="ml-auto text-xs text-blue-400 font-medium animate-pulse">running</span>` : ""}
     </div>${progressBar}
   </div>`;
 }
@@ -201,15 +212,16 @@ export function jobProgressFragment(data: JobProgressData): string {
       </div>`
     : "";
 
-  const layers = LAYER_ORDER.map((layer) =>
-    layerRow(layer, byLayer.get(layer), isActive),
+  const layerOrder = latestJob.type === "blueprint" ? BLUEPRINT_LAYER_ORDER : INDEX_LAYER_ORDER;
+  const layers = layerOrder.map((layer) =>
+    layerRow(layer, byLayer.get(layer), isActive, LAYER_UNIT[layer] ?? "files"),
   ).join("");
 
   return `<div id="job-progress" class="mb-6"${pollingAttr}>
   <div class="rounded-xl border border-slate-700 bg-slate-800 p-5">
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
-        <span class="text-sm font-medium text-slate-300">Latest Job</span>
+        <span class="text-sm font-medium text-slate-300">${latestJob.type === "blueprint" ? "Blueprint Job" : "Index Job"}</span>
         <span class="text-xs font-semibold uppercase tracking-wide ${statusColour}">${escapeHtml(latestJob.status)}</span>
         ${isActive ? `<span class="text-xs text-slate-500 animate-pulse">polling…</span>` : ""}
       </div>

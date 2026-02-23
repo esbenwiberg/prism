@@ -38,20 +38,14 @@ export function graphPage(data: GraphPageData): string {
   const content =
     breadcrumb +
     `<h2 class="text-2xl font-bold text-slate-50 mb-6">Dependency Graph</h2>` +
-    `<div id="graph-container" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
+    `<div id="graph-container" data-project-id="${projectId}" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
       <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
         Loading graph data...
       </div>
       <svg id="graph-svg" class="w-full h-full"></svg>
     </div>
     <p class="mt-2 text-xs text-slate-500">Drag nodes to reposition. Scroll to zoom. Click a node to see details.</p>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="/public/graph.js"></script>
-    <script>
-      if (typeof renderDependencyGraph === 'function') {
-        renderDependencyGraph(${projectId});
-      }
-    </script>`;
+    <script src="/public/graph.js"></script>`;
 
   return layout({
     title: `${projectName} — Dependency Graph`,
@@ -77,18 +71,12 @@ export function graphFragment(data: GraphPageData): string {
   <span class="text-slate-400">Dependency Graph</span>
 </div>
 <h2 class="text-2xl font-bold text-slate-50 mb-6">Dependency Graph</h2>
-<div id="graph-container" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
+<div id="graph-container" data-project-id="${projectId}" class="w-full rounded-xl border border-slate-700 bg-slate-800 relative overflow-hidden" style="height:600px;">
   <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
     Loading graph data...
   </div>
   <svg id="graph-svg" class="w-full h-full"></svg>
 </div>
 <p class="mt-2 text-xs text-slate-500">Drag nodes to reposition. Scroll to zoom. Click a node to see details.</p>
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script src="/public/graph.js"></script>
-<script>
-  if (typeof renderDependencyGraph === 'function') {
-    renderDependencyGraph(${projectId});
-  }
-</script>`;
+<script src="/public/graph.js"></script>`;
 }

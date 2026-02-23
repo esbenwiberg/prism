@@ -129,6 +129,8 @@ export interface HierarchicalBlueprintResult {
 /**
  * Generate a hierarchical blueprint for a project (two-pass).
  *
+ * @param onProgress - Called after pass 1 with (0, totalPhases) and after
+ *                     each phase with (phasesComplete, totalPhases).
  * @returns The stored plan, phases, and milestones.
  */
 export async function generateHierarchicalBlueprint(
@@ -137,6 +139,7 @@ export async function generateHierarchicalBlueprint(
   config: BlueprintConfig,
   budget: BudgetTracker,
   options?: BlueprintOptions,
+  onProgress?: (phasesComplete: number, totalPhases: number) => void,
 ): Promise<HierarchicalBlueprintResult | null> {
   if (!config.enabled) {
     logger.info("Blueprint generation disabled");
@@ -223,6 +226,9 @@ export async function generateHierarchicalBlueprint(
     "Master plan generated",
   );
 
+  // Notify caller of total phases now that we know them
+  onProgress?.(0, masterPlan.phases.length);
+
   // Persist master plan
   const planRow = await insertBlueprintPlan({
     projectId,
@@ -303,6 +309,7 @@ export async function generateHierarchicalBlueprint(
     );
 
     result.phases.push({ phase: phaseRow, milestones: milestoneRows });
+    onProgress?.(result.phases.length, masterPlan.phases.length);
   }
 
   logger.info(
