@@ -2,11 +2,12 @@
  * Migration runner for Prism.
  *
  * Wraps drizzle-orm's `migrate()` with:
- * - A destructive-SQL guard that rejects `DROP TABLE` / `TRUNCATE` unless
- *   explicitly opted-in via `allowDestructive`.
+ * - A destructive-SQL guard that rejects `DROP TABLE` / `TRUNCATE` in
+ *   pending (not-yet-applied) migrations.
  * - Logging via Pino.
  */
 
+import { sql } from "drizzle-orm";
 import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
 import { migrate as drizzleMigrate } from "drizzle-orm/node-postgres/migrator";
 import { logger } from "../logger.js";
@@ -22,48 +23,59 @@ const DESTRUCTIVE_PATTERNS = [
 export interface RunMigrationsOptions {
   /** Path to the migrations folder (default: `drizzle`). */
   migrationsFolder?: string;
-  /** Allow destructive statements (DROP TABLE, TRUNCATE, etc.). */
-  allowDestructive?: boolean;
 }
 
 /**
  * Run pending Drizzle migrations.
  *
- * Reads migration SQL files from `migrationsFolder`, checks each for
- * destructive statements, then delegates to `drizzle-orm/node-postgres/migrator`.
+ * Reads migration SQL files from `migrationsFolder`, checks each
+ * *pending* (not-yet-applied) migration for destructive statements,
+ * then delegates to `drizzle-orm/node-postgres/migrator`.
+ *
+ * Already-applied migrations are skipped by the guard — they ran
+ * intentionally and checking them again would be a false positive.
  */
 export async function runMigrations(
   options: RunMigrationsOptions = {},
 ): Promise<void> {
-  const {
-    migrationsFolder = "drizzle",
-    allowDestructive = false,
-  } = options;
+  const { migrationsFolder = "drizzle" } = options;
 
   const config: MigrationConfig = {
     migrationsFolder,
     migrationsTable: "prism_migrations",
   };
 
-  // --- Destructive-SQL guard ---
-  if (!allowDestructive) {
-    const migrationFiles = readMigrationFiles(config);
-    for (const mf of migrationFiles) {
-      for (const sql of mf.sql) {
-        for (const pattern of DESTRUCTIVE_PATTERNS) {
-          if (pattern.test(sql)) {
-            throw new Error(
-              `Destructive SQL detected in migration ${mf.folderMillis}: ` +
-                `"${sql.slice(0, 120)}…". ` +
-                `Pass allowDestructive: true to proceed.`,
-            );
-          }
+  const db = getDb();
+
+  // --- Destructive-SQL guard (pending migrations only) ---
+  const migrationFiles = readMigrationFiles(config);
+
+  // Fetch hashes of already-applied migrations so we can skip them.
+  let appliedHashes = new Set<string>();
+  try {
+    const result = await db.execute(
+      sql`SELECT hash FROM prism_migrations`,
+    );
+    appliedHashes = new Set(result.rows.map((r) => String((r as Record<string, unknown>).hash)));
+  } catch {
+    // Table doesn't exist yet (first run) — all migrations are pending.
+  }
+
+  for (const mf of migrationFiles) {
+    if (appliedHashes.has(mf.hash)) continue;
+    for (const statement of mf.sql) {
+      for (const pattern of DESTRUCTIVE_PATTERNS) {
+        if (pattern.test(statement)) {
+          throw new Error(
+            `Destructive SQL detected in pending migration ${mf.folderMillis}: ` +
+              `"${statement.slice(0, 120)}…". ` +
+              `Remove the statement or apply the migration manually.`,
+          );
         }
       }
     }
   }
 
-  const db = getDb();
   logger.info({ migrationsFolder }, "Running database migrations");
   await drizzleMigrate(db, config);
   logger.info("Database migrations complete");

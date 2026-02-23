@@ -14,7 +14,7 @@ export const workerCommand = new Command("worker")
   .action(async () => {
     initConfig();
 
-    await runMigrations({ allowDestructive: true });
+    await runMigrations();
     logger.info("Starting Prism worker process");
     console.log("  Prism worker starting — polling for jobs...\n");
 

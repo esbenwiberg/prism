@@ -23,7 +23,6 @@ import {
   insertBlueprintPlan,
   insertBlueprintPhase,
   bulkInsertBlueprintMilestones,
-  deleteBlueprintPlansByProjectId,
   type BlueprintPlanRow,
   type BlueprintPhaseRow,
   type BlueprintMilestoneRow,
@@ -215,9 +214,6 @@ export async function generateHierarchicalBlueprint(
 
   // Build project intent
   const projectIntent = buildProjectIntent(projectName, goal);
-
-  // Clear old hierarchical blueprints
-  await deleteBlueprintPlansByProjectId(projectId);
 
   const client = new Anthropic();
 

@@ -13,7 +13,7 @@ export const serveCommand = new Command("serve")
     const config = initConfig();
     const port = opts.port ? parseInt(opts.port, 10) : config.dashboard.port;
 
-    await runMigrations({ allowDestructive: true });
+    await runMigrations();
     logger.info({ port }, "Starting dashboard");
     startServer(port);
   });
