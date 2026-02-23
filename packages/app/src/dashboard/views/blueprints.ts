@@ -7,7 +7,24 @@ import { escapeHtml, card, badge, type BadgeVariant } from "./components.js";
 import type { Risk } from "../../blueprint/types.js";
 
 // ---------------------------------------------------------------------------
-// Types
+// Chat / proposal types
+// ---------------------------------------------------------------------------
+
+export interface ProposedEdit {
+  milestoneId: number;
+  field: string;
+  newValue: string;
+}
+
+export interface ChatEntry {
+  role: "user" | "assistant";
+  content: string;
+  proposedEdits?: ProposedEdit[];
+  appliedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// View data types
 // ---------------------------------------------------------------------------
 
 export interface PlanListItem {
@@ -28,6 +45,7 @@ export interface MilestoneViewData {
   keyFiles: string[] | null;
   verification: string | null;
   details: string | null;
+  decisions: string[] | null;
 }
 
 export interface PhaseViewData {
@@ -38,6 +56,9 @@ export interface PhaseViewData {
   milestoneCount: number | null;
   model: string | null;
   costUsd: string | null;
+  status: string;
+  notes: string | null;
+  chatHistory: ChatEntry[];
   milestones: MilestoneViewData[];
 }
 
@@ -219,7 +240,41 @@ function blueprintDetailContent(data: BlueprintDetailPageData): string {
   html += `<h3 class="mt-6 mb-4 text-lg font-semibold text-slate-50">Phases</h3>`;
 
   for (const phase of phases) {
-    html += `
+    html += renderPhaseCard(phase);
+  }
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Phase card rendering
+// ---------------------------------------------------------------------------
+
+function renderPhaseCard(phase: PhaseViewData): string {
+  const isAccepted = phase.status === "accepted";
+  const statusBadge = isAccepted
+    ? `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">ACCEPTED</span>`
+    : `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">DRAFT</span>`;
+
+  const acceptBtn = isAccepted ? "" : `
+    <button
+      hx-post="/blueprints/phases/${phase.id}/accept"
+      hx-target="#phase-status-badge-${phase.id}"
+      hx-swap="outerHTML"
+      class="text-xs font-medium text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+      Accept Phase
+    </button>`;
+
+  const discussBtn = `
+    <button
+      onclick="document.getElementById('chat-panel-${phase.id}').style.display = document.getElementById('chat-panel-${phase.id}').style.display === 'none' ? 'block' : 'none'"
+      class="text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+      Discuss
+    </button>`;
+
+  const milestonesHtml = phase.milestones.map((ms) => renderMilestoneCard(ms)).join("");
+
+  return `
 <details class="rounded-xl border border-slate-700 bg-slate-800 mb-3" open>
   <summary class="flex justify-between items-center px-5 py-4 cursor-pointer font-semibold text-slate-50 list-none hover:bg-slate-700/50 transition-colors rounded-xl">
     <span class="flex items-center gap-3">
@@ -232,29 +287,35 @@ function blueprintDetailContent(data: BlueprintDetailPageData): string {
       Export
     </a>
   </summary>
-  <div class="px-5 pb-5">`;
+  <div class="px-5 pb-5">
+    ${phase.intent ? `<p class="text-sm text-slate-400 mb-4">${escapeHtml(phase.intent)}</p>` : ""}
 
-    if (phase.intent) {
-      html += `<p class="text-sm text-slate-400 mb-4">${escapeHtml(phase.intent)}</p>`;
-    }
+    <div id="phase-milestones-${phase.id}">
+      ${milestonesHtml}
+    </div>
 
-    for (const ms of phase.milestones) {
-      html += renderMilestone(ms);
-    }
+    <!-- Phase footer: status + actions -->
+    <div class="mt-4 pt-4 border-t border-slate-700 flex items-center gap-3 flex-wrap">
+      ${statusBadge}
+      ${acceptBtn}
+      ${discussBtn}
+    </div>
 
-    html += `</div></details>`;
-  }
-
-  return html;
+    <!-- Chat panel (hidden by default) -->
+    <div id="chat-panel-${phase.id}" style="display:none" class="mt-4">
+      ${renderChatPanel(phase)}
+    </div>
+  </div>
+</details>`;
 }
 
 // ---------------------------------------------------------------------------
-// Milestone rendering
+// Milestone card rendering (exported for use in routes)
 // ---------------------------------------------------------------------------
 
-function renderMilestone(ms: MilestoneViewData): string {
+export function renderMilestoneCard(ms: MilestoneViewData): string {
   let html = `
-<div class="border-l-2 border-slate-600 pl-4 mb-4">
+<div id="milestone-card-${ms.id}" class="border-l-2 border-slate-600 pl-4 mb-4">
   <div class="text-sm font-semibold text-slate-200 mb-1">
     ${ms.milestoneOrder}. ${escapeHtml(ms.title)}
   </div>`;
@@ -280,7 +341,119 @@ function renderMilestone(ms: MilestoneViewData): string {
     </div>`;
   }
 
+  if (ms.decisions && ms.decisions.length > 0) {
+    const decisionsHtml = ms.decisions
+      .map((d) => `<li class="text-slate-300">${escapeHtml(d)}</li>`)
+      .join("");
+    html += `<div class="mt-2">
+      <span class="text-xs font-medium text-slate-400">Decisions:</span>
+      <ul class="mt-1 space-y-1 list-disc list-inside text-xs">${decisionsHtml}</ul>
+    </div>`;
+  }
+
   html += `</div>`;
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Chat panel rendering
+// ---------------------------------------------------------------------------
+
+function renderChatPanel(phase: PhaseViewData): string {
+  const threadHtml = renderChatThread(phase.id, phase.chatHistory);
+
+  const notesValue = escapeHtml(phase.notes ?? "");
+
+  return `
+<div class="rounded-xl border border-slate-600 bg-slate-900 p-4">
+  <h4 class="text-sm font-semibold text-slate-300 mb-3">Discuss with Claude</h4>
+
+  <!-- Chat thread -->
+  <div id="chat-thread-${phase.id}" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
+    ${threadHtml}
+  </div>
+
+  <!-- Chat input -->
+  <form
+    hx-post="/blueprints/phases/${phase.id}/chat"
+    hx-target="#chat-thread-${phase.id}"
+    hx-swap="innerHTML"
+    hx-on::after-request="this.querySelector('textarea').value=''"
+    class="flex flex-col gap-2">
+    <textarea
+      name="message"
+      rows="3"
+      placeholder="Ask Claude to improve a milestone, explain a decision, or suggest alternatives…"
+      class="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-purple-500 focus:outline-none resize-none"></textarea>
+    <button type="submit"
+      class="self-end inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50">
+      Send
+    </button>
+  </form>
+
+  <!-- Notes -->
+  <div class="mt-4 pt-4 border-t border-slate-700">
+    <label class="text-xs font-medium text-slate-400 block mb-1">Notes</label>
+    <textarea
+      name="notes"
+      rows="3"
+      hx-post="/blueprints/phases/${phase.id}/notes"
+      hx-trigger="blur"
+      hx-swap="none"
+      placeholder="Add your own notes about this phase…"
+      class="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-purple-500 focus:outline-none resize-none">${notesValue}</textarea>
+  </div>
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Chat thread rendering (exported for use in routes)
+// ---------------------------------------------------------------------------
+
+export function renderChatThread(phaseId: number, history: ChatEntry[]): string {
+  if (history.length === 0) {
+    return `<p class="text-xs text-slate-500 text-center py-4">No messages yet. Start a conversation above.</p>`;
+  }
+
+  return history.map((entry, i) => renderChatEntry(phaseId, entry, i)).join("\n");
+}
+
+function renderChatEntry(phaseId: number, entry: ChatEntry, index: number): string {
+  const isUser = entry.role === "user";
+
+  const bubbleClass = isUser
+    ? "bg-purple-600/20 border border-purple-500/30 rounded-xl px-3 py-2 text-sm text-slate-200 self-end max-w-[85%]"
+    : "bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm text-slate-200 self-start max-w-[85%]";
+
+  const roleLabel = isUser
+    ? `<span class="text-xs text-purple-400 font-medium mb-1 block">You</span>`
+    : `<span class="text-xs text-slate-400 font-medium mb-1 block">Claude</span>`;
+
+  let html = `<div class="flex ${isUser ? "justify-end" : "justify-start"}">
+  <div class="${bubbleClass}">
+    ${roleLabel}
+    <p class="whitespace-pre-wrap">${escapeHtml(entry.content)}</p>`;
+
+  // Apply button for assistant messages with proposals
+  if (!isUser && entry.proposedEdits && entry.proposedEdits.length > 0) {
+    if (entry.appliedAt) {
+      html += `<div class="mt-2 text-xs text-emerald-400">✓ Changes applied</div>`;
+    } else {
+      const editSummary = entry.proposedEdits.length === 1
+        ? "1 change"
+        : `${entry.proposedEdits.length} changes`;
+      html += `
+    <button
+      hx-post="/blueprints/phases/${phaseId}/chat/apply/${index}"
+      hx-target="#phase-milestones-${phaseId}"
+      hx-swap="innerHTML"
+      class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-600/30 transition-colors">
+      Apply ${editSummary}
+    </button>`;
+    }
+  }
+
+  html += `</div></div>`;
   return html;
 }
 

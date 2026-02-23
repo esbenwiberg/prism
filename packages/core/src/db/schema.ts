@@ -237,6 +237,12 @@ export const blueprintPhases = pgTable("prism_blueprint_phases", {
   milestoneCount: integer("milestone_count"),
   model: text("model"),
   costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+  /** Free-form markdown notes, user-editable per phase. */
+  notes: text("notes"),
+  /** Review status: 'draft' | 'accepted'. */
+  status: text("status").notNull().default("draft"),
+  /** Conversation history for AI phase review. */
+  chatHistory: jsonb("chat_history"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -257,6 +263,8 @@ export const blueprintMilestones = pgTable("prism_blueprint_milestones", {
   keyFiles: jsonb("key_files"),
   verification: text("verification"),
   details: text("details"),
+  /** Architectural decisions made for this milestone (alternatives + rationale). */
+  decisions: jsonb("decisions"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

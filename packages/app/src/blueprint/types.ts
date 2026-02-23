@@ -69,8 +69,10 @@ export interface PhaseMilestone {
   keyFiles: string[];
   /** Verification command(s) to confirm the milestone is complete. */
   verification: string;
-  /** Detailed implementation description. */
+  /** Numbered step-by-step implementation guide (≥3 concrete steps). */
   details: string;
+  /** Explicit architectural choices made for this milestone and why (alternatives considered). */
+  decisions?: string[];
 }
 
 // ---------------------------------------------------------------------------

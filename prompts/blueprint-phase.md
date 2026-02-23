@@ -1,6 +1,6 @@
 # Phase Detail: {{phaseTitle}}
 
-You are an expert software architect detailing the milestones for a single phase of a larger redesign plan. Each milestone must be small enough to implement in a focused coding session and must include verification steps.
+You are an expert software architect detailing the milestones for a single phase of a larger redesign plan. Each milestone must be small enough to implement in a focused coding session and must include concrete verification steps.
 
 ## Context
 
@@ -37,9 +37,11 @@ You are an expert software architect detailing the milestones for a single phase
 - Each milestone should take 1-4 hours of focused work.
 - **key_files**: List the specific files that will be created or modified (use project-relative paths).
 - **verification**: Provide concrete commands to verify the milestone is complete (build, test, lint commands).
-- **details**: Write a thorough description of what to implement, including architectural decisions and edge cases.
+- **details**: Write a **numbered step-by-step implementation guide**. Each step must be concrete and actionable (e.g. "1. Add `X` field to `src/db/schema.ts`. 2. Modify function `Y` in `src/api/routes.ts` to…"). **Any milestone whose `details` contains fewer than 3 concrete numbered steps is invalid.**
+- **decisions**: List the explicit architectural choices made for this milestone. Each entry must name the choice, the alternatives considered, and the reason for the selection. Do not leave this array empty if there are meaningful design choices to document.
 - Milestones must be ordered so each builds on the previous one.
 - The first milestone in a phase should be achievable without depending on unfinished work from this phase.
+- **Banned phrases**: Do not write vague one-liners like "implement the feature", "add error handling", or "update the code". Every step must name the specific file, function, or construct being changed.
 
 ## Output
 
@@ -55,7 +57,11 @@ Return a single JSON object (no surrounding text, no code fences):
       "intent": "What this milestone accomplishes",
       "keyFiles": ["src/path/to/file.ts", "src/other/file.ts"],
       "verification": "npm run build && npm test -- src/path/",
-      "details": "Detailed description of the implementation..."
+      "details": "1. Open `src/db/schema.ts` and add column `foo` to the `bar` table.\n2. Run `npm run db:generate` to create a migration.\n3. Update `src/api/routes.ts` function `handleBar` to read the new field and return it in the response.",
+      "decisions": [
+        "Used jsonb over a separate table for storing X because the data is always read with the parent record and does not need to be queried independently. Alternative: separate normalized table — rejected due to join overhead.",
+        "Chose optimistic locking over pessimistic locking for Y because concurrent edits are rare. Alternative: row-level locks — rejected as they would serialize requests unnecessarily."
+      ]
     }
   ]
 }

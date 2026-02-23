@@ -41,12 +41,16 @@ export {
   blueprintsListFragment,
   blueprintDetailPage,
   blueprintDetailFragment,
+  renderChatThread,
+  renderMilestoneCard,
   type PlanListItem,
   type PlanViewData,
   type PhaseViewData,
   type MilestoneViewData,
   type BlueprintsListPageData,
   type BlueprintDetailPageData,
+  type ChatEntry,
+  type ProposedEdit,
 } from "./blueprints.js";
 
 export {

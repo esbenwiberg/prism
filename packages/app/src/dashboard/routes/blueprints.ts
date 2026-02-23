@@ -1,19 +1,30 @@
 /**
  * Blueprints routes — hierarchical blueprint plans, phases, and milestones.
  *
- * GET /projects/:id/blueprints          — list all plans
- * GET /projects/:id/blueprints/:planId  — plan detail with phases
- * GET /blueprints/phases/:phaseId/export — export phase as markdown
- * GET /blueprints/plans/:planId/export   — export full plan as markdown
+ * GET  /projects/:id/blueprints                          — list all plans
+ * GET  /projects/:id/blueprints/:planId                  — plan detail with phases
+ * GET  /blueprints/phases/:phaseId/export                — export phase as markdown
+ * GET  /blueprints/plans/:planId/export                  — export full plan as markdown
+ * POST /blueprints/phases/:phaseId/chat                  — AI phase review chat
+ * POST /blueprints/phases/:phaseId/chat/apply/:entryIndex — apply proposed edits
+ * POST /blueprints/phases/:phaseId/accept                — mark phase as accepted
+ * POST /blueprints/phases/:phaseId/notes                 — save phase notes
  */
 
 import { Router } from "express";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   getProject,
   getBlueprintPlansByProjectId,
   getBlueprintPlan,
   getBlueprintPhasesByPlanId,
   getBlueprintMilestonesByPhaseId,
+  getBlueprintPhase,
+  getBlueprintMilestone,
+  updateBlueprintPhaseStatus,
+  updateBlueprintPhaseNotes,
+  updateBlueprintPhaseChatHistory,
+  updateBlueprintMilestoneField,
 } from "@prism/core";
 
 import {
@@ -34,6 +45,10 @@ import {
   blueprintsListFragment,
   blueprintDetailPage,
   blueprintDetailFragment,
+  renderChatThread,
+  renderMilestoneCard,
+  type ChatEntry,
+  type ProposedEdit,
 } from "../views/blueprints.js";
 
 export const blueprintsRouter = Router();
@@ -117,6 +132,9 @@ blueprintsRouter.get("/projects/:id/blueprints/:planId", async (req, res) => {
         milestoneCount: phase.milestoneCount,
         model: phase.model,
         costUsd: phase.costUsd,
+        status: phase.status ?? "draft",
+        notes: phase.notes ?? null,
+        chatHistory: (phase.chatHistory as ChatEntry[] | null) ?? [],
         milestones: milestones.map((ms) => ({
           id: ms.id,
           milestoneOrder: ms.milestoneOrder,
@@ -125,6 +143,7 @@ blueprintsRouter.get("/projects/:id/blueprints/:planId", async (req, res) => {
           keyFiles: ms.keyFiles as string[] | null,
           verification: ms.verification,
           details: ms.details,
+          decisions: ms.decisions as string[] | null,
         })),
       };
     }),
@@ -170,7 +189,6 @@ blueprintsRouter.get("/blueprints/phases/:phaseId/export", async (req, res) => {
     return;
   }
 
-  const { getBlueprintPhase } = await import("@prism/core");
   const phaseRow = await getBlueprintPhase(phaseId);
   if (!phaseRow) {
     res.status(404).send("Phase not found");
@@ -188,6 +206,7 @@ blueprintsRouter.get("/blueprints/phases/:phaseId/export", async (req, res) => {
       keyFiles: (ms.keyFiles as string[]) ?? [],
       verification: ms.verification ?? "",
       details: ms.details ?? "",
+      decisions: (ms.decisions as string[] | null) ?? undefined,
     })),
   };
 
@@ -251,6 +270,7 @@ blueprintsRouter.get("/blueprints/plans/:planId/export", async (req, res) => {
         keyFiles: (ms.keyFiles as string[]) ?? [],
         verification: ms.verification ?? "",
         details: ms.details ?? "",
+        decisions: (ms.decisions as string[] | null) ?? undefined,
       })),
     });
   }
@@ -266,6 +286,242 @@ blueprintsRouter.get("/blueprints/plans/:planId/export", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// AI Phase Review — Chat
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post("/blueprints/phases/:phaseId/chat", async (req, res) => {
+  const phaseId = parseInt(req.params.phaseId, 10);
+  if (isNaN(phaseId)) {
+    res.status(400).send("Invalid phase ID");
+    return;
+  }
+
+  const userMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  if (!userMessage) {
+    res.status(400).send("Message required");
+    return;
+  }
+
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    res.status(404).send("Phase not found");
+    return;
+  }
+
+  const milestoneRows = await getBlueprintMilestonesByPhaseId(phaseId);
+  const history: ChatEntry[] = (phaseRow.chatHistory as ChatEntry[] | null) ?? [];
+
+  // Build system prompt
+  const milestonesContext = milestoneRows.map((ms, i) => {
+    const kf = (ms.keyFiles as string[] | null)?.join(", ") ?? "";
+    const dec = (ms.decisions as string[] | null)?.map((d) => `  - ${d}`).join("\n") ?? "";
+    return [
+      `### Milestone ${i + 1}: ${ms.title} (id: ${ms.id})`,
+      ms.intent ? `Intent: ${ms.intent}` : "",
+      ms.details ? `Details:\n${ms.details}` : "",
+      kf ? `Key files: ${kf}` : "",
+      ms.verification ? `Verification: ${ms.verification}` : "",
+      dec ? `Decisions:\n${dec}` : "",
+    ].filter(Boolean).join("\n");
+  }).join("\n\n");
+
+  const systemPrompt = [
+    `You are reviewing Phase ${phaseRow.phaseOrder}: "${phaseRow.title}" of a software redesign blueprint.`,
+    `Phase intent: ${phaseRow.intent ?? ""}`,
+    "",
+    "## Current Milestones",
+    milestonesContext,
+    "",
+    "## Your Role",
+    "Help the user improve this phase. You can:",
+    "- Explain any milestone in more detail",
+    "- Suggest concrete improvements to details, key files, or verification",
+    "- Propose changes to specific milestone fields",
+    "",
+    "## Proposing Changes",
+    "When you want to propose edits to milestone fields, append a <proposal> block AFTER your response text:",
+    "<proposal>",
+    '[{"milestoneId": <id>, "field": "details|keyFiles|verification|title", "newValue": "..."}]',
+    "</proposal>",
+    "",
+    'The "field" must be one of: title, details, verification, keyFiles.',
+    'For "keyFiles", provide a JSON array of file path strings as the newValue.',
+    'For "details", write numbered steps (1. ... 2. ... 3. ...).',
+    "Only include a <proposal> block when you have concrete edits to suggest. Do not include it for informational replies.",
+  ].join("\n");
+
+  // Build messages array for Claude
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = history.map((e) => ({
+    role: e.role,
+    content: e.content,
+  }));
+  messages.push({ role: "user", content: userMessage });
+
+  try {
+    const client = new Anthropic();
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages,
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const rawAssistant = textBlock && "text" in textBlock ? textBlock.text : "";
+
+    // Parse proposal block
+    const proposalMatch = rawAssistant.match(/<proposal>([\s\S]*?)<\/proposal>/);
+    let proposedEdits: ProposedEdit[] | undefined;
+    let displayContent = rawAssistant;
+
+    if (proposalMatch) {
+      displayContent = rawAssistant.replace(/<proposal>[\s\S]*?<\/proposal>/, "").trim();
+      try {
+        const parsed = JSON.parse(proposalMatch[1].trim());
+        if (Array.isArray(parsed)) {
+          proposedEdits = parsed.filter(
+            (e): e is ProposedEdit =>
+              e !== null &&
+              typeof e === "object" &&
+              typeof e.milestoneId === "number" &&
+              typeof e.field === "string" &&
+              typeof e.newValue === "string",
+          );
+        }
+      } catch {
+        // Malformed proposal block — ignore
+      }
+    }
+
+    // Append entries to history
+    const newHistory: ChatEntry[] = [
+      ...history,
+      { role: "user", content: userMessage },
+      { role: "assistant", content: displayContent, proposedEdits },
+    ];
+
+    await updateBlueprintPhaseChatHistory(phaseId, newHistory as unknown[]);
+
+    res.send(renderChatThread(phaseId, newHistory));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).send(`<p class="text-red-400 text-sm">Error: ${escapeForHtml(msg)}</p>`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AI Phase Review — Apply proposed edits
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post(
+  "/blueprints/phases/:phaseId/chat/apply/:entryIndex",
+  async (req, res) => {
+    const phaseId = parseInt(req.params.phaseId, 10);
+    const entryIndex = parseInt(req.params.entryIndex, 10);
+    if (isNaN(phaseId) || isNaN(entryIndex)) {
+      res.status(400).send("Invalid IDs");
+      return;
+    }
+
+    const phaseRow = await getBlueprintPhase(phaseId);
+    if (!phaseRow) {
+      res.status(404).send("Phase not found");
+      return;
+    }
+
+    const history: ChatEntry[] = (phaseRow.chatHistory as ChatEntry[] | null) ?? [];
+    const entry = history[entryIndex];
+    if (!entry || !entry.proposedEdits || entry.proposedEdits.length === 0) {
+      res.status(400).send("No proposed edits at this index");
+      return;
+    }
+
+    // Apply each edit
+    for (const edit of entry.proposedEdits) {
+      const validFields = ["title", "details", "verification", "keyFiles"] as const;
+      if (validFields.includes(edit.field as (typeof validFields)[number])) {
+        await updateBlueprintMilestoneField(
+          edit.milestoneId,
+          edit.field as "title" | "details" | "verification" | "keyFiles",
+          edit.newValue,
+        );
+      }
+    }
+
+    // Mark entry as applied
+    const updatedHistory = history.map((e, i) =>
+      i === entryIndex ? { ...e, appliedAt: new Date().toISOString() } : e,
+    );
+    await updateBlueprintPhaseChatHistory(phaseId, updatedHistory as unknown[]);
+
+    // Return updated milestones HTML
+    const milestoneRows = await getBlueprintMilestonesByPhaseId(phaseId);
+    const milestonesHtml = milestoneRows
+      .map((ms) =>
+        renderMilestoneCard({
+          id: ms.id,
+          milestoneOrder: ms.milestoneOrder,
+          title: ms.title,
+          intent: ms.intent,
+          keyFiles: ms.keyFiles as string[] | null,
+          verification: ms.verification,
+          details: ms.details,
+          decisions: ms.decisions as string[] | null,
+        }),
+      )
+      .join("");
+
+    res.send(milestonesHtml);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Phase: Accept
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post("/blueprints/phases/:phaseId/accept", async (req, res) => {
+  const phaseId = parseInt(req.params.phaseId, 10);
+  if (isNaN(phaseId)) {
+    res.status(400).send("Invalid phase ID");
+    return;
+  }
+
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    res.status(404).send("Phase not found");
+    return;
+  }
+
+  await updateBlueprintPhaseStatus(phaseId, "accepted");
+
+  // Return updated status badge HTML
+  res.send(renderPhaseStatusBadge("accepted", phaseId));
+});
+
+// ---------------------------------------------------------------------------
+// Phase: Save notes
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post("/blueprints/phases/:phaseId/notes", async (req, res) => {
+  const phaseId = parseInt(req.params.phaseId, 10);
+  if (isNaN(phaseId)) {
+    res.status(400).send("Invalid phase ID");
+    return;
+  }
+
+  const notes = typeof req.body?.notes === "string" ? req.body.notes : "";
+
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    res.status(404).send("Phase not found");
+    return;
+  }
+
+  await updateBlueprintPhaseNotes(phaseId, notes);
+  res.status(204).send();
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -275,4 +531,22 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 50);
+}
+
+function escapeForHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderPhaseStatusBadge(status: string, phaseId: number): string {
+  const isAccepted = status === "accepted";
+  const badgeClass = isAccepted
+    ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+    : "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30";
+  const label = isAccepted ? "ACCEPTED" : "DRAFT";
+
+  return `<span id="phase-status-badge-${phaseId}" class="${badgeClass}">${label}</span>`;
 }

@@ -47,6 +47,7 @@ export interface InsertBlueprintMilestoneInput {
   keyFiles?: unknown;
   verification?: string | null;
   details?: string | null;
+  decisions?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +158,42 @@ export async function getBlueprintPhase(
   return row;
 }
 
+/** Set the review status of a phase. */
+export async function updateBlueprintPhaseStatus(
+  phaseId: number,
+  status: "draft" | "accepted",
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(blueprintPhases)
+    .set({ status })
+    .where(eq(blueprintPhases.id, phaseId));
+}
+
+/** Update the free-form notes for a phase. */
+export async function updateBlueprintPhaseNotes(
+  phaseId: number,
+  notes: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(blueprintPhases)
+    .set({ notes })
+    .where(eq(blueprintPhases.id, phaseId));
+}
+
+/** Replace the entire chat history array for a phase. */
+export async function updateBlueprintPhaseChatHistory(
+  phaseId: number,
+  history: unknown[],
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(blueprintPhases)
+    .set({ chatHistory: history })
+    .where(eq(blueprintPhases.id, phaseId));
+}
+
 // ---------------------------------------------------------------------------
 // Milestones
 // ---------------------------------------------------------------------------
@@ -177,6 +214,7 @@ export async function insertBlueprintMilestone(
       keyFiles: input.keyFiles ?? null,
       verification: input.verification ?? null,
       details: input.details ?? null,
+      decisions: input.decisions ?? null,
     })
     .returning();
   return row;
@@ -200,6 +238,7 @@ export async function bulkInsertBlueprintMilestones(
         keyFiles: input.keyFiles ?? null,
         verification: input.verification ?? null,
         details: input.details ?? null,
+        decisions: input.decisions ?? null,
       })),
     )
     .returning();
@@ -215,4 +254,45 @@ export async function getBlueprintMilestonesByPhaseId(
     .from(blueprintMilestones)
     .where(eq(blueprintMilestones.phaseId, phaseId))
     .orderBy(asc(blueprintMilestones.milestoneOrder));
+}
+
+/** Get a single milestone by ID. */
+export async function getBlueprintMilestone(
+  id: number,
+): Promise<BlueprintMilestoneRow | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(blueprintMilestones)
+    .where(eq(blueprintMilestones.id, id));
+  return row;
+}
+
+/** Apply a single proposed edit to a milestone field. */
+export async function updateBlueprintMilestoneField(
+  milestoneId: number,
+  field: "title" | "details" | "verification" | "keyFiles",
+  newValue: string,
+): Promise<void> {
+  const db = getDb();
+
+  if (field === "keyFiles") {
+    // newValue is expected to be a JSON array string or comma-separated paths
+    let parsed: string[];
+    try {
+      parsed = JSON.parse(newValue);
+      if (!Array.isArray(parsed)) parsed = [newValue];
+    } catch {
+      parsed = newValue.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    await db
+      .update(blueprintMilestones)
+      .set({ keyFiles: parsed })
+      .where(eq(blueprintMilestones.id, milestoneId));
+  } else {
+    await db
+      .update(blueprintMilestones)
+      .set({ [field]: newValue })
+      .where(eq(blueprintMilestones.id, milestoneId));
+  }
 }

@@ -305,6 +305,7 @@ export async function generateHierarchicalBlueprint(
         keyFiles: ms.keyFiles ?? null,
         verification: ms.verification ?? null,
         details: ms.details ?? null,
+        decisions: ms.decisions ?? null,
       })),
     );
 
@@ -552,6 +553,9 @@ export function parsePhaseDetail(rawText: string): BlueprintPhase | null {
               : [],
             verification: typeof m.verification === "string" ? m.verification : "",
             details: typeof m.details === "string" ? m.details : "",
+            decisions: Array.isArray(m.decisions)
+              ? (m.decisions as unknown[]).filter((d): d is string => typeof d === "string")
+              : undefined,
           }))
       : [];
 
@@ -619,6 +623,7 @@ function fallbackMilestones(outline: PhaseOutline): PhaseMilestone[] {
     keyFiles: [],
     verification: "",
     details: "",
+    decisions: undefined,
   }));
 }
 
