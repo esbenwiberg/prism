@@ -37,9 +37,17 @@ node -e "
     pool.query('CREATE EXTENSION IF NOT EXISTS vector').then(() => { pool.end(); }).catch(err => { console.error(err); pool.end(); process.exit(1); });
 "
 
-# Run Drizzle migrations (non-fatal — DB may already be up to date)
+# Run Drizzle migrations via the compiled programmatic runner
 echo "Prism: running database migrations..."
-npx drizzle-kit migrate || echo "Prism: WARNING — migrations skipped (may already be applied)"
+node -e "
+const { runMigrations } = require('@prism/core');
+runMigrations().then(() => {
+  console.log('Prism: migrations complete.');
+}).catch(function(err) {
+  console.error('Prism: migration error:', err.message);
+  process.exit(1);
+});
+"
 
 # Start web server (background)
 echo "Prism: starting dashboard..."

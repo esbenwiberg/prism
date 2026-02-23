@@ -45,9 +45,6 @@ COPY packages/app/package.json packages/app/
 # Install production dependencies only
 RUN npm ci --omit=dev
 
-# Install drizzle-kit locally for migrations (it's a devDependency in core but needed at runtime for migrate)
-RUN npm install --no-save drizzle-kit@0.30.6
-
 # Copy compiled output from build stage
 COPY --from=build /app/packages/core/dist/ packages/core/dist/
 COPY --from=build /app/packages/app/dist/ packages/app/dist/
@@ -55,9 +52,8 @@ COPY --from=build /app/packages/app/dist/ packages/app/dist/
 # Copy non-TypeScript assets that tsc doesn't emit
 COPY packages/app/src/dashboard/public/ packages/app/dist/dashboard/public/
 
-# Copy drizzle migrations and config
+# Copy drizzle migrations (SQL files used by the programmatic runner)
 COPY drizzle/ drizzle/
-COPY drizzle.config.ts ./
 
 # Copy prism config
 COPY prism.config.yaml ./
