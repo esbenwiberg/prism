@@ -284,13 +284,13 @@ const PROJECT_TABS = [
   // Structural layer
   { key: "files", label: "Browse Files" },
   { key: "symbols", label: "Symbols" },
-  { key: "modules", label: "Modules" },
   { key: "graph", label: "Dependency Graph" },
-  // Documentation layer
+  // Purpose layer
   { key: "purpose", label: "Purpose" },
   // Semantic layer
   { key: "summaries", label: "Summaries" },
   // Analysis layer
+  { key: "modules", label: "Modules" },
   { key: "findings", label: "Findings" },
   // Blueprint layer
   { key: "blueprints", label: "Blueprints" },
