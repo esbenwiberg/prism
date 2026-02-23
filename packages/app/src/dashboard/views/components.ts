@@ -60,10 +60,16 @@ export function card(title: string, body: string): string {
 // ---------------------------------------------------------------------------
 
 /** Render a stat card with a label and value. */
-export function statCard(label: string, value: string | number): string {
+export function statCard(
+  label: string,
+  value: string | number,
+  opts?: { color?: string },
+): string {
+  const color = opts?.color;
+  const valueClass = color ? `text-${color}-400` : "text-slate-50";
   return `
 <div class="rounded-xl border border-slate-700 bg-slate-800 p-5 text-center min-w-[120px]">
-  <div class="text-2xl font-semibold text-slate-50">${escapeHtml(String(value))}</div>
+  <div class="text-2xl font-semibold ${valueClass}">${escapeHtml(String(value))}</div>
   <div class="mt-1 text-xs text-slate-400">${escapeHtml(label)}</div>
 </div>`;
 }
@@ -129,6 +135,133 @@ export function severityBadge(severity: string): string {
   };
   return badge(severity, map[severity] ?? "neutral");
 }
+
+// ---------------------------------------------------------------------------
+// Button
+// ---------------------------------------------------------------------------
+
+/** Render a button or anchor styled as a button. */
+export function button(
+  label: string,
+  opts?: {
+    variant?: "primary" | "secondary" | "danger";
+    href?: string;
+    attrs?: string;
+  },
+): string {
+  const variant = opts?.variant ?? "primary";
+  const base =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900";
+  const variants: Record<string, string> = {
+    primary: "bg-purple-500 text-white hover:bg-purple-400 focus:ring-purple-500",
+    secondary:
+      "border border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-slate-50 focus:ring-slate-500",
+    danger: "bg-red-500 text-white hover:bg-red-400 focus:ring-red-400",
+  };
+  const classes = `${base} ${variants[variant]}`;
+  const extra = opts?.attrs ? ` ${opts.attrs}` : "";
+  if (opts?.href) {
+    return `<a href="${opts.href}" class="${classes}"${extra}>${label}</a>`;
+  }
+  return `<button class="${classes}"${extra}>${label}</button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Form inputs
+// ---------------------------------------------------------------------------
+
+/** Render a labelled text input. */
+export function input(
+  name: string,
+  label: string,
+  opts?: {
+    type?: string;
+    value?: string;
+    required?: boolean;
+    placeholder?: string;
+  },
+): string {
+  const type = opts?.type ?? "text";
+  const value = opts?.value !== undefined ? ` value="${escapeHtml(opts.value)}"` : "";
+  const required = opts?.required ? " required" : "";
+  const placeholder = opts?.placeholder
+    ? ` placeholder="${escapeHtml(opts.placeholder)}"`
+    : "";
+  return `<div class="space-y-1.5">
+  <label for="${name}" class="block text-sm font-medium text-slate-300">${escapeHtml(label)}</label>
+  <input type="${type}" id="${name}" name="${name}"${value}${required}${placeholder}
+    class="block w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+</div>`;
+}
+
+/** Render a labelled select dropdown. */
+export function select(
+  name: string,
+  label: string,
+  options: { value: string; label: string }[],
+  selected?: string,
+  attrs?: string,
+): string {
+  const optionHtml = options
+    .map(
+      (o) =>
+        `<option value="${escapeHtml(o.value)}"${o.value === selected ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+    )
+    .join("");
+  const extra = attrs ? ` ${attrs}` : "";
+  return `<div class="space-y-1.5">
+  <label for="${name}" class="block text-sm font-medium text-slate-300">${escapeHtml(label)}</label>
+  <select id="${name}" name="${name}"${extra}
+    class="block w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-50 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
+    ${optionHtml}
+  </select>
+</div>`;
+}
+
+/** Render a labelled textarea. */
+export function textarea(
+  name: string,
+  label: string,
+  opts?: { value?: string; required?: boolean; placeholder?: string; rows?: number },
+): string {
+  const rows = opts?.rows ?? 4;
+  const required = opts?.required ? " required" : "";
+  const placeholder = opts?.placeholder
+    ? ` placeholder="${escapeHtml(opts.placeholder)}"`
+    : "";
+  const content = opts?.value !== undefined ? escapeHtml(opts.value) : "";
+  return `<div class="space-y-1.5">
+  <label for="${name}" class="block text-sm font-medium text-slate-300">${escapeHtml(label)}</label>
+  <textarea id="${name}" name="${name}" rows="${rows}"${required}${placeholder}
+    class="block w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 font-mono focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">${content}</textarea>
+</div>`;
+}
+
+/** Render a checkbox with a label. */
+export function checkbox(name: string, label: string, checked: boolean): string {
+  const checkedAttr = checked ? " checked" : "";
+  return `<label class="flex items-center gap-3 cursor-pointer">
+  <input type="checkbox" name="${escapeHtml(name)}" value="true"${checkedAttr}
+    class="h-4 w-4 rounded border-slate-600 bg-slate-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
+  <span class="text-sm text-slate-300">${escapeHtml(label)}</span>
+</label>`;
+}
+
+/** Render an empty-state placeholder. */
+export function emptyState(message: string, actionHtml?: string): string {
+  const action = actionHtml ? `<div class="mt-4">${actionHtml}</div>` : "";
+  return `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12 px-6">
+  <svg class="h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125 2.25 2.25m0 0 2.25-2.25M12 13.875V7.5M3.75 7.5h16.5" />
+  </svg>
+  <p class="mt-3 text-sm text-slate-400">${escapeHtml(message)}</p>
+  ${action}
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Severity helpers
+// ---------------------------------------------------------------------------
 
 /** Map index status to a badge variant. */
 export function statusBadge(status: string): string {

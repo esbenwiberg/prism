@@ -3,7 +3,7 @@
  */
 
 import { Command } from "commander";
-import { logger, initConfig } from "@prism/core";
+import { logger, initConfig, runMigrations } from "@prism/core";
 import { startServer } from "../../dashboard/server.js";
 
 export const serveCommand = new Command("serve")
@@ -13,6 +13,7 @@ export const serveCommand = new Command("serve")
     const config = initConfig();
     const port = opts.port ? parseInt(opts.port, 10) : config.dashboard.port;
 
+    await runMigrations();
     logger.info({ port }, "Starting dashboard");
     startServer(port);
   });

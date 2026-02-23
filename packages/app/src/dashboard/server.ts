@@ -21,6 +21,10 @@ import { graphRouter } from "./routes/graph.js";
 import { modulesRouter } from "./routes/modules.js";
 import { credentialsRouter } from "./routes/credentials.js";
 import { exportRouter } from "./routes/export.js";
+import logsRouter from "./routes/logs.js";
+import healthRouter from "./routes/health.js";
+import settingsRouter from "./routes/settings.js";
+import promptsRouter from "./routes/prompts.js";
 
 /**
  * Create and configure the Express application.
@@ -112,6 +116,10 @@ export function createApp(): express.Express {
   app.use(graphRouter);
   app.use(modulesRouter);
   app.use(credentialsRouter);
+  app.use(logsRouter);
+  app.use(healthRouter);
+  app.use(settingsRouter);
+  app.use(promptsRouter);
 
   return app;
 }

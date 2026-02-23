@@ -231,6 +231,7 @@ describe("executeJob — blueprint type", () => {
       expect.any(Object),
       expect.any(Object),
       { goal: "modernize", focus: "src/api" },
+      expect.any(Function),
     );
   });
 

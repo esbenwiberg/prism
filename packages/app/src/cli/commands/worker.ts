@@ -6,7 +6,7 @@
  */
 
 import { Command } from "commander";
-import { logger, initConfig } from "@prism/core";
+import { logger, initConfig, runMigrations } from "@prism/core";
 import { startWorker } from "../../worker/index.js";
 
 export const workerCommand = new Command("worker")
@@ -14,6 +14,7 @@ export const workerCommand = new Command("worker")
   .action(async () => {
     initConfig();
 
+    await runMigrations();
     logger.info("Starting Prism worker process");
     console.log("  Prism worker starting — polling for jobs...\n");
 

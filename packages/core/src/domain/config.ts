@@ -10,7 +10,7 @@
  *   const cfg = getConfig();
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import { logger } from "../logger.js";
@@ -266,4 +266,25 @@ export function getConfig(): PrismConfig {
  */
 export function resetConfig(): void {
   _config = undefined;
+}
+
+/**
+ * Deep-merge `partial` into the current config, write the result back to
+ * `prism.config.yaml`, reset the cache, and return the new config.
+ *
+ * @param partial — A (possibly nested) subset of PrismConfig to update.
+ */
+export function saveConfig(partial: Record<string, unknown>): PrismConfig {
+  const current = getConfig();
+  const updated = deepMerge(
+    structuredClone(current) as unknown as Record<string, unknown>,
+    partial,
+  ) as unknown as PrismConfig;
+  writeFileSync(
+    resolve(process.cwd(), "prism.config.yaml"),
+    yaml.dump(updated),
+    "utf-8",
+  );
+  resetConfig();
+  return initConfig();
 }

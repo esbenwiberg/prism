@@ -82,3 +82,14 @@ export {
   jobProgressFragment,
   type JobProgressData,
 } from "./job-progress.js";
+
+export { logsPage } from "./logs.js";
+export { healthPage, statsPartial, type SystemStats } from "./health.js";
+export {
+  settingsPage,
+  settingsPanel,
+  analysisTabPartial,
+  indexerTabPartial,
+  type SettingsTab,
+} from "./settings.js";
+export { promptsPage, promptEditorPartial } from "./prompts.js";
