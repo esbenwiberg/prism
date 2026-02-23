@@ -38,14 +38,14 @@ if [[ -z "${ACR_NAME:-}" ]]; then
   ACR_NAME=$(az acr list \
     --resource-group "$RESOURCE_GROUP" \
     --query "[0].name" \
-    --output tsv)
+    --output tsv | tr -d '\r')
   if [[ -z "$ACR_NAME" ]]; then
     echo "Error: No ACR found in $RESOURCE_GROUP. Run ./deploy/infra.sh first."
     exit 1
   fi
 fi
 
-ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query "loginServer" --output tsv)
+ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query "loginServer" --output tsv | tr -d '\r')
 FULL_IMAGE="$ACR_LOGIN_SERVER/prism:$IMAGE_TAG"
 
 echo "=== Prism — Deploy ==="
@@ -63,12 +63,14 @@ az acr build \
   --output none
 echo "  Done."
 
-# 2. Update container app with the new image
+# 2. Update container app with the new image (force new revision so Azure pulls the latest tag)
 echo "Step 2/2: Updating container app..."
+REVISION_SUFFIX="deploy-$(date +%s)"
 az containerapp update \
   --name prism \
   --resource-group "$RESOURCE_GROUP" \
   --image "$FULL_IMAGE" \
+  --revision-suffix "$REVISION_SUFFIX" \
   --output none
 
 # Get the FQDN for confirmation
@@ -76,7 +78,7 @@ APP_FQDN=$(az containerapp show \
   --name prism \
   --resource-group "$RESOURCE_GROUP" \
   --query "properties.configuration.ingress.fqdn" \
-  --output tsv)
+  --output tsv | tr -d '\r')
 
 echo ""
 echo "=== Deploy complete ==="

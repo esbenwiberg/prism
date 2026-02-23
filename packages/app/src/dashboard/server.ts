@@ -28,6 +28,11 @@ import { exportRouter } from "./routes/export.js";
 export function createApp(): express.Express {
   const app = express();
 
+  // Trust the reverse proxy (Azure Container Apps ingress) so that
+  // req.protocol and req.hostname reflect the external URL, not the
+  // internal container-to-ingress hop.
+  app.set("trust proxy", true);
+
   // ---------------------------------------------------------------------------
   // Middleware
   // ---------------------------------------------------------------------------
@@ -47,7 +52,7 @@ export function createApp(): express.Express {
   // Auth routes (unauthenticated)
   // ---------------------------------------------------------------------------
 
-  app.get("/login", async (_req, res) => {
+  app.get("/login", async (req, res) => {
     // If SKIP_AUTH is set, redirect straight to /
     if (process.env.SKIP_AUTH === "true") {
       res.redirect("/");
@@ -55,7 +60,8 @@ export function createApp(): express.Express {
     }
 
     try {
-      const url = await getAuthUrl();
+      const origin = `${req.protocol}://${req.hostname}`;
+      const url = await getAuthUrl(origin);
       res.redirect(url);
     } catch (err) {
       logger.error({ err }, "Failed to generate auth URL");
@@ -71,7 +77,8 @@ export function createApp(): express.Express {
     }
 
     try {
-      const user = await handleCallback(code);
+      const origin = `${req.protocol}://${req.hostname}`;
+      const user = await handleCallback(code, origin);
       req.session.user = user;
       res.redirect("/");
     } catch (err) {

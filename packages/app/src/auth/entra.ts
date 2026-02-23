@@ -55,12 +55,23 @@ function getCca(): ConfidentialClientApplication {
 const SCOPES = ["user.read"];
 
 /**
+ * Build the redirect URI from the request origin, falling back to
+ * AZURE_REDIRECT_URI env var, then localhost.
+ */
+function buildRedirectUri(origin?: string): string {
+  if (origin) return `${origin}/auth/callback`;
+  return process.env.AZURE_REDIRECT_URI ?? "http://localhost:3100/auth/callback";
+}
+
+/**
  * Generate the Azure Entra ID authorization URL.
  *
  * The user's browser should be redirected to this URL.
+ *
+ * @param origin — The request origin (e.g. "https://myapp.azurecontainerapps.io").
  */
-export async function getAuthUrl(): Promise<string> {
-  const redirectUri = process.env.AZURE_REDIRECT_URI ?? "http://localhost:3100/auth/callback";
+export async function getAuthUrl(origin?: string): Promise<string> {
+  const redirectUri = buildRedirectUri(origin);
 
   const request: AuthorizationUrlRequest = {
     scopes: SCOPES,
@@ -77,13 +88,14 @@ export async function getAuthUrl(): Promise<string> {
  * Exchange the authorization code for tokens.
  *
  * @param code — The authorization code from the callback query string.
+ * @param origin — The request origin (must match the one used in getAuthUrl).
  * @returns The user's account info (name, username).
  */
-export async function handleCallback(code: string): Promise<{
+export async function handleCallback(code: string, origin?: string): Promise<{
   name: string;
   username: string;
 }> {
-  const redirectUri = process.env.AZURE_REDIRECT_URI ?? "http://localhost:3100/auth/callback";
+  const redirectUri = buildRedirectUri(origin);
 
   const request: AuthorizationCodeRequest = {
     code,
