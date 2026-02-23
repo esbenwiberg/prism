@@ -24,8 +24,8 @@ Thumbs.db
 # Test
 coverage/
 
-# Drizzle
-drizzle/meta/
+# Drizzle — ignore auto-generated snapshots but track the journal
+drizzle/meta/*_snapshot.json
 
 # Deploy secrets (local overrides with real values)
 deploy/parameters.local.json
