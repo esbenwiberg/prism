@@ -41,7 +41,7 @@ node -e "
 echo "Prism: running database migrations..."
 node -e "
 const { runMigrations } = require('@prism/core');
-runMigrations().then(() => {
+runMigrations({ allowDestructive: true }).then(() => {
   console.log('Prism: migrations complete.');
 }).catch(function(err) {
   console.error('Prism: migration error:', err.message);
