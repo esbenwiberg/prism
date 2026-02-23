@@ -53,6 +53,7 @@ const PASS_1_BUDGET_FRACTION = 0.3;
 
 let _masterTemplate: string | undefined;
 let _phaseTemplate: string | undefined;
+let _expandTemplate: string | undefined;
 
 function loadMasterTemplate(basePath?: string): string {
   if (_masterTemplate) return _masterTemplate;
@@ -99,10 +100,33 @@ function loadPhaseTemplate(basePath?: string): string {
   return _phaseTemplate;
 }
 
+function loadExpandTemplate(basePath?: string): string {
+  if (_expandTemplate) return _expandTemplate;
+
+  const promptPath = basePath
+    ? resolve(basePath, "prompts/blueprint-expand.md")
+    : resolve(process.cwd(), "prompts/blueprint-expand.md");
+
+  try {
+    _expandTemplate = readFileSync(promptPath, "utf-8");
+  } catch {
+    _expandTemplate = [
+      "Expand the milestones for phase: {{phaseTitle}}",
+      "Phase intent: {{phaseIntent}}",
+      "Milestones: {{milestones}}",
+      "Return JSON array with milestoneOrder, intent, keyFiles, verification, details.",
+    ].join("\n");
+    logger.warn({ promptPath }, "Expand blueprint prompt not found, using fallback");
+  }
+
+  return _expandTemplate;
+}
+
 /** Reset cached templates (for testing). */
 export function resetBlueprintTemplate(): void {
   _masterTemplate = undefined;
   _phaseTemplate = undefined;
+  _expandTemplate = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +289,7 @@ export async function generateHierarchicalBlueprint(
       "Pass 2: generating phase details",
     );
 
-    const phaseDetail = await generatePhaseDetail(
+    let phaseDetail = await generatePhaseDetail(
       client,
       projectName,
       systemSummary,
@@ -279,6 +303,31 @@ export async function generateHierarchicalBlueprint(
       config,
       budget,
     );
+
+    // Retry once if milestones came back with empty details (likely truncated output).
+    if (!budget.exceeded && phaseDetail && milestonesHaveEmptyDetails(phaseDetail.milestones)) {
+      logger.warn(
+        { phaseOrder: i + 1, title: phaseOutline.title },
+        "Phase milestones have empty details — retrying pass 2",
+      );
+      const retry = await generatePhaseDetail(
+        client,
+        projectName,
+        systemSummary,
+        masterPlan,
+        phaseOutline,
+        i + 1,
+        masterPlan.phases.length,
+        previousPhases,
+        nextPhases,
+        filteredFindings,
+        config,
+        budget,
+      );
+      if (retry && !milestonesHaveEmptyDetails(retry.milestones)) {
+        phaseDetail = retry;
+      }
+    }
 
     // Persist phase
     const costSoFar = budget.spentUsd;
@@ -324,6 +373,93 @@ export async function generateHierarchicalBlueprint(
   );
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Milestone expansion (used by expand-milestones dashboard endpoint)
+// ---------------------------------------------------------------------------
+
+/** Returns true when more than half the milestones are missing meaningful details. */
+function milestonesHaveEmptyDetails(milestones: PhaseMilestone[]): boolean {
+  if (milestones.length === 0) return false;
+  const emptyCount = milestones.filter(
+    (ms) => !ms.details || ms.details.trim().length < 30,
+  ).length;
+  return emptyCount > milestones.length / 2;
+}
+
+export interface MilestoneExpansion {
+  milestoneOrder: number;
+  intent: string;
+  keyFiles: string[];
+  verification: string;
+  details: string;
+}
+
+/**
+ * Call Claude to fill in missing intent/details for a set of milestones.
+ * Used by the dashboard "Generate descriptions" button on existing blueprints.
+ */
+export async function expandPhaseMilestones(
+  phaseTitle: string,
+  phaseIntent: string,
+  milestones: Array<{ milestoneOrder: number; title: string }>,
+  model: string,
+): Promise<MilestoneExpansion[] | null> {
+  const template = loadExpandTemplate();
+
+  const milestonesText = milestones
+    .map((ms) => `${ms.milestoneOrder}. ${ms.title}`)
+    .join("\n");
+
+  const prompt = template
+    .replace(/\{\{phaseTitle\}\}/g, phaseTitle)
+    .replace(/\{\{phaseIntent\}\}/g, phaseIntent)
+    .replace(/\{\{milestones\}\}/g, milestonesText);
+
+  try {
+    const client = new Anthropic();
+    const response = await client.messages.create({
+      model,
+      max_tokens: 8000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const rawText = textBlock && "text" in textBlock ? textBlock.text : "";
+
+    return parseExpansions(rawText);
+  } catch (err) {
+    logger.error(
+      { error: err instanceof Error ? err.message : String(err) },
+      "Failed to expand milestone descriptions",
+    );
+    return null;
+  }
+}
+
+function parseExpansions(rawText: string): MilestoneExpansion[] | null {
+  const text = stripCodeFences(rawText);
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) return null;
+
+    return (parsed as unknown[])
+      .filter((e): e is Record<string, unknown> => e !== null && typeof e === "object")
+      .map((e) => ({
+        milestoneOrder: typeof e.milestoneOrder === "number" ? e.milestoneOrder : 0,
+        intent: typeof e.intent === "string" ? e.intent : "",
+        keyFiles: Array.isArray(e.keyFiles)
+          ? (e.keyFiles as unknown[]).filter((f): f is string => typeof f === "string")
+          : [],
+        verification: typeof e.verification === "string" ? e.verification : "",
+        details: typeof e.details === "string" ? e.details : "",
+      }))
+      .filter((e) => e.milestoneOrder > 0);
+  } catch {
+    logger.warn("Failed to parse milestone expansions as JSON");
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -457,7 +593,7 @@ async function generatePhaseDetail(
   try {
     const response = await client.messages.create({
       model: config.model,
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{ role: "user", content: prompt }],
     });
 

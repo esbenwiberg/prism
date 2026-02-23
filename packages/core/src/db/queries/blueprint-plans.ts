@@ -268,6 +268,23 @@ export async function getBlueprintMilestone(
   return row;
 }
 
+/** Bulk-update the detail fields of a milestone (used by the expand-milestones endpoint). */
+export async function updateBlueprintMilestoneDetails(
+  milestoneId: number,
+  updates: {
+    intent?: string | null;
+    keyFiles?: string[] | null;
+    verification?: string | null;
+    details?: string | null;
+  },
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(blueprintMilestones)
+    .set(updates)
+    .where(eq(blueprintMilestones.id, milestoneId));
+}
+
 /** Apply a single proposed edit to a milestone field. */
 export async function updateBlueprintMilestoneField(
   milestoneId: number,

@@ -25,6 +25,7 @@ import {
   updateBlueprintPhaseNotes,
   updateBlueprintPhaseChatHistory,
   updateBlueprintMilestoneField,
+  updateBlueprintMilestoneDetails,
 } from "@prism/core";
 
 import {
@@ -32,6 +33,8 @@ import {
   renderPhaseMarkdown,
   renderFullBlueprintMarkdown,
 } from "../../blueprint/markdown.js";
+
+import { expandPhaseMilestones } from "../../blueprint/generator.js";
 
 import type {
   MasterPlanOutline,
@@ -405,7 +408,14 @@ blueprintsRouter.post("/blueprints/phases/:phaseId/chat", async (req, res) => {
     res.send(renderChatThread(phaseId, newHistory));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).send(`<p class="text-red-400 text-sm">Error: ${escapeForHtml(msg)}</p>`);
+    // Return 200 so HTMX 2.x swaps the content — non-2xx responses are not swapped by default.
+    // Do NOT persist this to the DB since the API call failed.
+    const errorHistory: ChatEntry[] = [
+      ...history,
+      { role: "user", content: userMessage },
+      { role: "assistant", content: `Sorry, I encountered an error: ${msg}` },
+    ];
+    res.send(renderChatThread(phaseId, errorHistory));
   }
 });
 
@@ -519,6 +529,79 @@ blueprintsRouter.post("/blueprints/phases/:phaseId/notes", async (req, res) => {
 
   await updateBlueprintPhaseNotes(phaseId, notes);
   res.status(204).send();
+});
+
+// ---------------------------------------------------------------------------
+// Expand milestone descriptions (for milestones that have no details)
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post("/blueprints/phases/:phaseId/expand-milestones", async (req, res) => {
+  const phaseId = parseInt(req.params.phaseId, 10);
+  if (isNaN(phaseId)) {
+    res.status(400).send("Invalid phase ID");
+    return;
+  }
+
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    res.status(404).send("Phase not found");
+    return;
+  }
+
+  const milestoneRows = await getBlueprintMilestonesByPhaseId(phaseId);
+
+  // Only expand milestones that are missing meaningful details
+  const toExpand = milestoneRows.filter(
+    (ms) => !ms.details || ms.details.trim().length < 30,
+  );
+
+  if (toExpand.length > 0) {
+    try {
+      const expansions = await expandPhaseMilestones(
+        phaseRow.title,
+        phaseRow.intent ?? "",
+        toExpand.map((ms) => ({ milestoneOrder: ms.milestoneOrder, title: ms.title })),
+        "claude-sonnet-4-6",
+      );
+
+      if (expansions) {
+        for (const exp of expansions) {
+          const ms = toExpand.find((m) => m.milestoneOrder === exp.milestoneOrder);
+          if (ms) {
+            await updateBlueprintMilestoneDetails(ms.id, {
+              intent: exp.intent || null,
+              keyFiles: exp.keyFiles.length > 0 ? exp.keyFiles : null,
+              verification: exp.verification || null,
+              details: exp.details || null,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      // Log but fall through — return whatever we have rather than showing an error
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("expand-milestones error:", msg);
+    }
+  }
+
+  // Return updated milestones HTML (whether expansion succeeded or not)
+  const updatedRows = await getBlueprintMilestonesByPhaseId(phaseId);
+  const milestonesHtml = updatedRows
+    .map((ms) =>
+      renderMilestoneCard({
+        id: ms.id,
+        milestoneOrder: ms.milestoneOrder,
+        title: ms.title,
+        intent: ms.intent,
+        keyFiles: ms.keyFiles as string[] | null,
+        verification: ms.verification,
+        details: ms.details,
+        decisions: ms.decisions as string[] | null,
+      }),
+    )
+    .join("");
+
+  res.send(milestonesHtml);
 });
 
 // ---------------------------------------------------------------------------

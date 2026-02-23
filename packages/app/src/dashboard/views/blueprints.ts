@@ -256,6 +256,10 @@ function renderPhaseCard(phase: PhaseViewData): string {
     ? `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">ACCEPTED</span>`
     : `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">DRAFT</span>`;
 
+  const costBadge = phase.costUsd
+    ? `<span class="text-xs font-mono text-slate-500">gen: $${escapeHtml(phase.costUsd)}</span>`
+    : "";
+
   const acceptBtn = isAccepted ? "" : `
     <button
       hx-post="/blueprints/phases/${phase.id}/accept"
@@ -272,6 +276,25 @@ function renderPhaseCard(phase: PhaseViewData): string {
       Discuss
     </button>`;
 
+  const hasEmptyMilestones = phase.milestones.some((ms) => !ms.intent && !ms.details);
+  const expandBtn = hasEmptyMilestones
+    ? `<button
+        hx-post="/blueprints/phases/${phase.id}/expand-milestones"
+        hx-target="#phase-milestones-${phase.id}"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this"
+        class="group/expbtn inline-flex items-center gap-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 border border-amber-500/30 rounded-full px-2.5 py-0.5 transition-colors disabled:opacity-60 disabled:cursor-wait">
+        <span class="group-disabled/expbtn:hidden">Generate descriptions</span>
+        <span class="hidden group-disabled/expbtn:inline-flex items-center gap-1.5">
+          <svg class="animate-spin h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"/>
+            <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" class="opacity-75"/>
+          </svg>
+          Generating…
+        </span>
+      </button>`
+    : "";
+
   const milestonesHtml = phase.milestones.map((ms) => renderMilestoneCard(ms)).join("");
 
   return `
@@ -280,6 +303,7 @@ function renderPhaseCard(phase: PhaseViewData): string {
     <span class="flex items-center gap-3">
       Phase ${phase.phaseOrder}: ${escapeHtml(phase.title)}
       ${badge(String(phase.milestones.length) + " milestones", "info")}
+      ${costBadge}
     </span>
     <a href="/blueprints/phases/${phase.id}/export"
        onclick="event.stopPropagation();"
@@ -298,6 +322,7 @@ function renderPhaseCard(phase: PhaseViewData): string {
     <div class="mt-4 pt-4 border-t border-slate-700 flex items-center gap-3 flex-wrap">
       ${statusBadge}
       ${acceptBtn}
+      ${expandBtn}
       ${discussBtn}
     </div>
 
@@ -326,6 +351,10 @@ export function renderMilestoneCard(ms: MilestoneViewData): string {
 
   if (ms.details) {
     html += `<p class="text-xs text-slate-400 mb-1 whitespace-pre-wrap">${escapeHtml(ms.details)}</p>`;
+  }
+
+  if (!ms.intent && !ms.details) {
+    html += `<p class="text-xs text-slate-600 italic mb-1">No description — use Discuss to elaborate on this milestone.</p>`;
   }
 
   if (ms.keyFiles && ms.keyFiles.length > 0) {
@@ -364,9 +393,16 @@ function renderChatPanel(phase: PhaseViewData): string {
 
   const notesValue = escapeHtml(phase.notes ?? "");
 
+  const chatCostLabel = phase.chatHistory.length > 0
+    ? `<span class="text-xs text-slate-500 font-mono">chat est: ${estimateChatCost(phase.chatHistory)}</span>`
+    : "";
+
   return `
 <div class="rounded-xl border border-slate-600 bg-slate-900 p-4">
-  <h4 class="text-sm font-semibold text-slate-300 mb-3">Discuss with Claude</h4>
+  <div class="flex items-center justify-between mb-3">
+    <h4 class="text-sm font-semibold text-slate-300">Discuss with Claude</h4>
+    ${chatCostLabel}
+  </div>
 
   <!-- Chat thread -->
   <div id="chat-thread-${phase.id}" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
@@ -501,4 +537,32 @@ function statBox(label: string, value: string): string {
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen) + "...";
+}
+
+/**
+ * Rough chat session cost estimate.
+ * Assumes ~4 chars/token, Sonnet 4 pricing ($3/1M input, $15/1M output).
+ * System prompt estimated at 800 tokens.
+ */
+function estimateChatCost(history: ChatEntry[]): string {
+  const CHARS_PER_TOKEN = 4;
+  const SYSTEM_TOKENS = 800;
+  const INPUT_USD = 3e-6;
+  const OUTPUT_USD = 15e-6;
+
+  let totalCost = 0;
+  let inputChars = SYSTEM_TOKENS * CHARS_PER_TOKEN;
+
+  for (const e of history) {
+    if (e.role === "user") {
+      inputChars += e.content.length;
+    } else {
+      totalCost +=
+        (inputChars / CHARS_PER_TOKEN) * INPUT_USD +
+        (e.content.length / CHARS_PER_TOKEN) * OUTPUT_USD;
+      inputChars += e.content.length;
+    }
+  }
+
+  return `~$${totalCost.toFixed(4)}`;
 }

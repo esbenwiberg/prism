@@ -113,6 +113,7 @@ export {
   bulkInsertBlueprintMilestones,
   getBlueprintMilestonesByPhaseId,
   getBlueprintMilestone,
+  updateBlueprintMilestoneDetails,
   updateBlueprintMilestoneField,
   type BlueprintPlanRow,
   type BlueprintPhaseRow,
