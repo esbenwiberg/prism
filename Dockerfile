@@ -31,8 +31,8 @@ FROM node:22-slim AS production
 
 WORKDIR /app
 
-# Install git (needed for cloning repos)
-RUN apt-get update && apt-get install -y --no-install-recommends git curl \
+# Install git + CA certs (needed for HTTPS cloning) + curl (healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace root files
