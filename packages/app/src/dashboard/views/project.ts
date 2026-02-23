@@ -151,6 +151,13 @@ export function projectPage(data: ProjectPageData): string {
      class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
     Summaries
   </a>
+  <a href="/projects/${project.id}/pipeline"
+     hx-get="/projects/${project.id}/pipeline"
+     hx-target="#main-content"
+     hx-push-url="true"
+     class="inline-flex items-center gap-2 rounded-lg bg-slate-700/50 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-inset ring-slate-600 transition-colors hover:bg-slate-700 hover:text-slate-50">
+    Pipeline
+  </a>
 </div>`;
 
   const progress = jobProgressFragment({
@@ -231,6 +238,13 @@ export function projectFragment(data: ProjectPageData): string {
          hx-push-url="true"
          class="inline-flex items-center gap-2 rounded-lg bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 ring-1 ring-inset ring-indigo-400/20 transition-colors hover:bg-indigo-500/20">
         Summaries
+      </a>
+      <a href="/projects/${project.id}/pipeline"
+         hx-get="/projects/${project.id}/pipeline"
+         hx-target="#main-content"
+         hx-push-url="true"
+         class="inline-flex items-center gap-2 rounded-lg bg-slate-700/50 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-inset ring-slate-600 transition-colors hover:bg-slate-700 hover:text-slate-50">
+        Pipeline
       </a>
     </div>`
   );
