@@ -71,6 +71,9 @@ import { rollupFileSummaries, rollupModuleSummaries, rollupSystemSummary } from 
 import { runPatternDetection } from "./analysis/patterns.js";
 import { runGapAnalysis } from "./analysis/gap-analysis.js";
 
+// Purpose layer imports
+import { runPurposeAnalysis } from "./purpose/index.js";
+
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -450,6 +453,7 @@ function isConfigFile(filePath: string): boolean {
 const DEFAULT_LAYERS: LayerName[] = [
   "structural",
   "docs",
+  "purpose",
   "semantic",
   "analysis",
   "blueprint",
@@ -480,7 +484,8 @@ export async function runPipeline(
     fullReindex,
     results: [],
     budget: createBudgetTracker(
-      config.semantic.budgetUsd +
+      config.purpose.budgetUsd +
+        config.semantic.budgetUsd +
         config.analysis.budgetUsd +
         config.blueprint.budgetUsd,
     ),
@@ -508,6 +513,10 @@ export async function runPipeline(
 
         case "docs":
           result = await executeDocsLayer(context);
+          break;
+
+        case "purpose":
+          result = await executePurposeLayer(context);
           break;
 
         case "semantic":
@@ -878,6 +887,137 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
       Date.now() - startTime,
     );
 
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Purpose layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute the purpose analysis layer (Layer 2.5).
+ *
+ * Synthesises a structured App Purpose Document from available project signals
+ * (docs intent, schema snippets, route snippets, exported type names, test
+ * descriptions) and stores it as a `prism_summaries` row with level="purpose".
+ */
+async function executePurposeLayer(context: IndexContext): Promise<LayerResult> {
+  const { project, config, budget } = context;
+  const startTime = Date.now();
+
+  if (!config.purpose.enabled) {
+    logger.info({ projectId: project.id }, "Purpose layer disabled, skipping");
+    return {
+      layer: "purpose",
+      status: "completed",
+      filesProcessed: 0,
+      filesTotal: 0,
+      durationMs: Date.now() - startTime,
+      costUsd: 0,
+    };
+  }
+
+  logger.info({ projectId: project.id }, "Starting purpose layer");
+
+  // Walk project files (reuse same walker)
+  const allFiles = await walkProjectFiles(
+    project.path,
+    config.structural.skipPatterns,
+    config.structural.maxFileSizeBytes,
+  );
+
+  // Re-assemble intent (same 5 calls as docs / analysis layers)
+  const readmeResults = parseDocFiles(allFiles);
+  const configInfos = parseConfigFiles(allFiles);
+  const commentResults = extractCommentsFromFiles(allFiles);
+  const techStack = buildTechStack(configInfos, allFiles);
+  const intent = assembleIntent(readmeResults, configInfos, commentResults, techStack);
+  const intentText = buildIntentDocContent(intent);
+
+  // Extract schema snippets — files matching schema/migration/.sql patterns
+  const schemaFiles = allFiles.filter((f) =>
+    /schema\.ts|migration|\.sql/i.test(f.path),
+  );
+  const schemaSnippets = schemaFiles
+    .slice(0, 3)
+    .map((f) => `// ${f.path}\n${f.content.slice(0, 3000)}`)
+    .join("\n\n---\n\n");
+
+  // Extract route snippets — files whose content mentions router/controller patterns
+  const routePattern = /router\.|app\.(get|post|put|delete|patch)|@(Get|Post|Put|Delete|Controller)/;
+  const routeFiles = allFiles.filter((f) => routePattern.test(f.content));
+  const routeSnippets = routeFiles
+    .slice(0, 5)
+    .map((f) => {
+      const lines = f.content.split("\n").slice(0, 50).join("\n");
+      return `// ${f.path}\n${lines}`;
+    })
+    .join("\n\n---\n\n");
+
+  // Extract exported type names from DB
+  const projectSymbols = await getSymbolsByProjectId(project.id);
+  const exportedTypeNames = projectSymbols
+    .filter(
+      (s) =>
+        s.exported &&
+        (s.kind === "class" || s.kind === "interface" || s.kind === "type"),
+    )
+    .map((s) => (s.signature ? `${s.name}: ${s.signature}` : s.name))
+    .slice(0, 100);
+
+  // Extract test descriptions — describe/it/test string literals
+  const testFiles = allFiles.filter((f) => /\.test\.[tj]s|\.spec\.[tj]s/.test(f.path));
+  const testDescRe = /(?:describe|it|test)\s*\(\s*["'`]([^"'`]+)["'`]/g;
+  const testDescriptions: string[] = [];
+  for (const f of testFiles) {
+    let match: RegExpExecArray | null;
+    while ((match = testDescRe.exec(f.content)) !== null) {
+      testDescriptions.push(match[1]);
+      if (testDescriptions.length >= 50) break;
+    }
+    if (testDescriptions.length >= 50) break;
+  }
+
+  const indexRun = await createIndexRun(project.id, "purpose", 1);
+
+  try {
+    const { content, costUsd } = await runPurposeAnalysis(
+      project.id,
+      project.name,
+      intentText,
+      schemaSnippets,
+      routeSnippets,
+      exportedTypeNames,
+      testDescriptions,
+      config.purpose,
+      budget,
+    );
+
+    const durationMs = Date.now() - startTime;
+    await completeIndexRun(indexRun.id, 1, durationMs, costUsd);
+
+    logger.info(
+      {
+        projectId: project.id,
+        contentLength: content.length,
+        costUsd: costUsd.toFixed(4),
+        durationMs,
+      },
+      "Purpose layer complete",
+    );
+
+    return {
+      layer: "purpose",
+      status: "completed",
+      filesProcessed: 1,
+      filesTotal: 1,
+      durationMs,
+      costUsd,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await failIndexRun(indexRun.id, errorMessage, 0, Date.now() - startTime);
     throw err;
   }
 }

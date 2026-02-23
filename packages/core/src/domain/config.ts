@@ -35,6 +35,11 @@ const DEFAULT_CONFIG: PrismConfig = {
     ],
     maxFileSizeBytes: 1_048_576, // 1 MB
   },
+  purpose: {
+    enabled: true,
+    model: "claude-sonnet-4-6-20250514",
+    budgetUsd: 2.0,
+  },
   semantic: {
     enabled: true,
     model: "claude-haiku-4-5-20251001",
@@ -133,6 +138,24 @@ function applyEnvOverrides(config: PrismConfig): PrismConfig {
       envVar: "PRISM_INDEXER_INCREMENTAL_BY_DEFAULT",
       apply: (cfg, v) => {
         cfg.indexer.incrementalByDefault = v === "true";
+      },
+    },
+    {
+      envVar: "PRISM_PURPOSE_ENABLED",
+      apply: (cfg, v) => {
+        cfg.purpose.enabled = v === "true";
+      },
+    },
+    {
+      envVar: "PRISM_PURPOSE_MODEL",
+      apply: (cfg, v) => {
+        cfg.purpose.model = v;
+      },
+    },
+    {
+      envVar: "PRISM_PURPOSE_BUDGET_USD",
+      apply: (cfg, v) => {
+        cfg.purpose.budgetUsd = parseFloat(v);
       },
     },
     {

@@ -22,6 +22,7 @@ export type IndexStatus =
 export type LayerName =
   | "structural"
   | "docs"
+  | "purpose"
   | "semantic"
   | "analysis"
   | "blueprint";
@@ -87,6 +88,12 @@ export interface SemanticConfig {
   budgetUsd: number;
 }
 
+export interface PurposeConfig {
+  enabled: boolean;
+  model: string;
+  budgetUsd: number;
+}
+
 export interface AnalysisConfig {
   enabled: boolean;
   model: string;
@@ -112,6 +119,7 @@ export interface DashboardConfig {
 /** Top-level Prism configuration loaded from `prism.config.yaml`. */
 export interface PrismConfig {
   structural: StructuralConfig;
+  purpose: PurposeConfig;
   semantic: SemanticConfig;
   analysis: AnalysisConfig;
   blueprint: BlueprintConfig;
