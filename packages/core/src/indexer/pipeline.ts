@@ -699,6 +699,15 @@ async function executeStructuralLayer(
       0,
     );
 
+    // Compute primary language from all files
+    const langCounts = new Map<string, number>();
+    for (const f of allFiles) {
+      if (f.language) langCounts.set(f.language, (langCounts.get(f.language) ?? 0) + 1);
+    }
+    const primaryLanguage = langCounts.size > 0
+      ? [...langCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+      : null;
+
     // Update project
     const headCommit = await getHeadCommit(project.path);
     await updateProject(project.id, {
@@ -706,6 +715,7 @@ async function executeStructuralLayer(
       totalFiles: allFiles.length,
       totalSymbols,
       lastIndexedCommit: headCommit,
+      ...(primaryLanguage ? { language: primaryLanguage } : {}),
     });
 
     const durationMs = Date.now() - startTime;

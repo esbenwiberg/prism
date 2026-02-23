@@ -127,6 +127,16 @@ export function projectFragment(data: ProjectPageData): string {
     indexRuns: indexRuns ?? [],
   });
 
+  const details = `
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-6 space-y-2 text-sm">
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Path:</span> <span class="font-mono text-xs">${escapeHtml(project.path)}</span></p>
+  ${project.gitUrl ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Git URL:</span> <span class="font-mono text-xs">${escapeHtml(project.gitUrl)}</span></p>` : ""}
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Status:</span> ${statusBadge(project.indexStatus)}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Last indexed commit:</span> <span class="font-mono text-xs">${escapeHtml(project.lastIndexedCommit ?? "\u2014")}</span></p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toISOString())}</p>
+</div>`;
+
   return (
     projectTabNav(project.id, project.name, "overview") +
     `<div class="flex gap-4 flex-wrap mb-6">
@@ -134,6 +144,7 @@ export function projectFragment(data: ProjectPageData): string {
       ${statCard("Symbols", project.totalSymbols ?? 0)}
       ${statCard("Findings", findingsCount)}
     </div>` +
+    details +
     actionButtons(project) +
     progress
   );

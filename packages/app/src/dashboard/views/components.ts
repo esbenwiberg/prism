@@ -281,14 +281,19 @@ export function statusBadge(status: string): string {
 
 const PROJECT_TABS = [
   { key: "overview", label: "Overview" },
+  // Structural layer
   { key: "files", label: "Browse Files" },
-  { key: "modules", label: "Modules" },
-  { key: "findings", label: "Findings" },
-  { key: "blueprints", label: "Blueprints" },
-  { key: "graph", label: "Dependency Graph" },
   { key: "symbols", label: "Symbols" },
+  { key: "modules", label: "Modules" },
+  { key: "graph", label: "Dependency Graph" },
+  // Documentation layer
   { key: "purpose", label: "Purpose" },
+  // Semantic layer
   { key: "summaries", label: "Summaries" },
+  // Analysis layer
+  { key: "findings", label: "Findings" },
+  // Blueprint layer
+  { key: "blueprints", label: "Blueprints" },
 ] as const;
 
 export type ProjectTabKey = typeof PROJECT_TABS[number]["key"];
