@@ -175,13 +175,15 @@ export async function generateHierarchicalBlueprint(
   logger.info({ projectId, projectName, goal, focus }, "Starting hierarchical blueprint generation");
 
   // Load all data
-  const [systemSummaries, moduleSummaries, findings] = await Promise.all([
+  const [systemSummaries, moduleSummaries, purposeSummaries, findings] = await Promise.all([
     getSummariesByLevel(projectId, "system"),
     getSummariesByLevel(projectId, "module"),
+    getSummariesByLevel(projectId, "purpose"),
     getFindingsByProjectId(projectId),
   ]);
 
   const systemSummary = systemSummaries[0]?.content ?? "";
+  const purposeDoc = purposeSummaries[0]?.content ?? "";
 
   if (!systemSummary && findings.length === 0) {
     logger.info("No system summary or findings — skipping blueprint generation");
@@ -228,6 +230,7 @@ export async function generateHierarchicalBlueprint(
     client,
     projectId,
     projectName,
+    purposeDoc,
     systemSummary,
     filteredModuleSummaries,
     filteredFindings,
@@ -484,6 +487,7 @@ async function generateMasterPlan(
   client: Anthropic,
   projectId: number,
   projectName: string,
+  purposeDoc: string,
   systemSummary: string,
   moduleSummaries: SummaryRow[],
   findings: FindingRow[],
@@ -505,6 +509,7 @@ async function generateMasterPlan(
 
   const prompt = template
     .replace(/\{\{projectName\}\}/g, projectName)
+    .replace(/\{\{purposeDoc\}\}/g, purposeDoc || "No purpose document available.")
     .replace(/\{\{systemSummary\}\}/g, systemSummary)
     .replace(/\{\{moduleSummaries\}\}/g, moduleSummariesText || "No module summaries available.")
     .replace(/\{\{findings\}\}/g, findingsText)

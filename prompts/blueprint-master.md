@@ -19,6 +19,9 @@ You are an expert software architect creating a phased redesign plan for a codeb
 
 **Project**: {{projectName}}
 
+**App purpose**:
+{{purposeDoc}}
+
 **System summary**:
 {{systemSummary}}
 
