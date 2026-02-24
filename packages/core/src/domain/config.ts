@@ -38,7 +38,7 @@ const DEFAULT_CONFIG: PrismConfig = {
   },
   purpose: {
     enabled: true,
-    model: "claude-sonnet-4-6-20250514",
+    model: "claude-sonnet-4-6",
     budgetUsd: 2.0,
   },
   semantic: {
@@ -51,12 +51,12 @@ const DEFAULT_CONFIG: PrismConfig = {
   },
   analysis: {
     enabled: true,
-    model: "claude-sonnet-4-6-20250514",
+    model: "claude-sonnet-4-6",
     budgetUsd: 5.0,
   },
   blueprint: {
     enabled: true,
-    model: "claude-sonnet-4-6-20250514",
+    model: "claude-sonnet-4-6",
     budgetUsd: 10.0,
   },
   indexer: {
