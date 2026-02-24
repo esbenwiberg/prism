@@ -76,8 +76,16 @@ function renderSections(content: string): string {
 export function purposePage(data: PurposePageData): string {
   const { projectId, projectName, content, userName } = data;
 
-  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
-    <p class="text-sm text-slate-400">No purpose document yet. Run the purpose layer (Layer 2.5) to generate one.</p>
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12 gap-4">
+    <p class="text-sm text-slate-400">No purpose document yet.</p>
+    <button hx-post="/projects/${projectId}/run-layer"
+            hx-vals='{"layer":"purpose"}'
+            hx-target="#job-progress"
+            hx-swap="outerHTML"
+            class="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-amber-400 transition-colors">
+      Generate Purpose Document
+    </button>
+    <div id="job-progress"></div>
   </div>`;
 
   const body = content ? renderSections(content) : emptyState;
@@ -101,8 +109,16 @@ export function purposePage(data: PurposePageData): string {
 export function purposeFragment(data: PurposePageData): string {
   const { projectId, projectName, content } = data;
 
-  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12">
-    <p class="text-sm text-slate-400">No purpose document yet. Run the purpose layer (Layer 2.5) to generate one.</p>
+  const emptyState = `<div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-12 gap-4">
+    <p class="text-sm text-slate-400">No purpose document yet.</p>
+    <button hx-post="/projects/${projectId}/run-layer"
+            hx-vals='{"layer":"purpose"}'
+            hx-target="#job-progress"
+            hx-swap="outerHTML"
+            class="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-amber-400 transition-colors">
+      Generate Purpose Document
+    </button>
+    <div id="job-progress"></div>
   </div>`;
 
   const body = content ? renderSections(content) : emptyState;

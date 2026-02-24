@@ -22,6 +22,8 @@ export interface JobOptions {
   fullReindex?: boolean;
   goal?: string;
   focus?: string;
+  /** If set, only run these pipeline layers instead of the full set. */
+  layers?: string[];
 }
 
 // ---------------------------------------------------------------------------

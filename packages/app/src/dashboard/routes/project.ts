@@ -134,6 +134,47 @@ projectRouter.post("/projects/:id/blueprint", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /projects/:id/run-layer — queue an index job for a single layer
+// ---------------------------------------------------------------------------
+
+projectRouter.post("/projects/:id/run-layer", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).send("Invalid project ID");
+      return;
+    }
+
+    const layer = (req.body?.layer as string)?.trim();
+    if (!layer) {
+      res.status(400).send("layer is required");
+      return;
+    }
+
+    const project = await getProject(id);
+    if (!project) {
+      res.status(404).send("Project not found");
+      return;
+    }
+
+    await createJob(id, "index", { layers: [layer] });
+
+    logger.info({ projectId: id, layer }, "Queued single-layer job");
+
+    const jobs = await getJobsByProjectId(id);
+    const indexRuns = await getIndexRunsByProjectId(id);
+    const latestJob = jobs.length > 0 ? jobs[jobs.length - 1] : null;
+
+    res.send(
+      jobProgressFragment({ projectId: id, latestJob, indexRuns }),
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to queue layer job");
+    res.status(500).send("Failed to queue layer job");
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /projects/:id/progress — HTMX polling fragment for job status
 // ---------------------------------------------------------------------------
 

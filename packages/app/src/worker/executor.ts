@@ -24,6 +24,7 @@ import {
   type JobRow,
   type JobOptions,
   type GitProvider,
+  type LayerName,
 } from "@prism/core";
 
 import { generateHierarchicalBlueprint } from "../blueprint/generator.js";
@@ -155,6 +156,7 @@ async function executeIndexJob(
     // Run the indexing pipeline
     await runPipeline(updatedProject, {
       fullReindex: options.fullReindex ?? true,
+      ...(options.layers ? { layers: options.layers as LayerName[] } : {}),
     });
   } finally {
     // Always cleanup the clone directory
