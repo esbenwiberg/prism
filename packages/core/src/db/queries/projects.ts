@@ -26,6 +26,7 @@ function toProject(row: typeof projects.$inferSelect): Project {
     lastIndexedCommit: row.lastIndexedCommit,
     settings: row.settings as Record<string, unknown> | null,
     gitUrl: row.gitUrl,
+    slug: row.slug,
     credentialId: row.credentialId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -42,6 +43,7 @@ function toProject(row: typeof projects.$inferSelect): Project {
 export interface CreateProjectOptions {
   settings?: Record<string, unknown>;
   gitUrl?: string;
+  slug?: string;
   credentialId?: number;
 }
 
@@ -61,9 +63,12 @@ export async function createProject(
   let credentialId: number | undefined;
   let settings: Record<string, unknown> | undefined;
 
-  if (optionsOrSettings && ("gitUrl" in optionsOrSettings || "credentialId" in optionsOrSettings)) {
+  let slug: string | undefined;
+
+  if (optionsOrSettings && ("gitUrl" in optionsOrSettings || "credentialId" in optionsOrSettings || "slug" in optionsOrSettings)) {
     const opts = optionsOrSettings as CreateProjectOptions;
     gitUrl = opts.gitUrl;
+    slug = opts.slug;
     credentialId = opts.credentialId;
     settings = opts.settings;
   } else {
@@ -77,6 +82,7 @@ export async function createProject(
       path,
       settings: settings ?? null,
       gitUrl: gitUrl ?? null,
+      slug: slug ?? null,
       credentialId: credentialId ?? null,
     })
     .returning();
@@ -103,6 +109,20 @@ export async function getProjectByPath(
     .select()
     .from(projects)
     .where(eq(projects.path, path));
+  return row ? toProject(row) : undefined;
+}
+
+/**
+ * Get a project by its slug (owner/repo identifier).
+ */
+export async function getProjectBySlug(
+  slug: string,
+): Promise<Project | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.slug, slug));
   return row ? toProject(row) : undefined;
 }
 
@@ -134,6 +154,7 @@ export async function updateProject(
       | "lastIndexedCommit"
       | "settings"
       | "gitUrl"
+      | "slug"
       | "credentialId"
     >
   >,

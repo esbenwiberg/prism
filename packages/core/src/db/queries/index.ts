@@ -6,6 +6,7 @@ export {
   createProject,
   getProject,
   getProjectByPath,
+  getProjectBySlug,
   listProjects,
   updateProject,
   deleteProject,

@@ -152,6 +152,7 @@ export interface Project {
   lastIndexedCommit: string | null;
   settings: Record<string, unknown> | null;
   gitUrl: string | null;
+  slug: string | null;
   credentialId: number | null;
   createdAt: Date;
   updatedAt: Date;

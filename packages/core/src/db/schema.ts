@@ -44,6 +44,7 @@ export const projects = pgTable("prism_projects", {
   lastIndexedCommit: text("last_indexed_commit"),
   settings: jsonb("settings"),
   gitUrl: text("git_url"),
+  slug: text("slug"),
   credentialId: integer("credential_id").references(() => credentials.id, {
     onDelete: "set null",
   }),

@@ -50,6 +50,13 @@
       "when": 1771934800000,
       "tag": "0006_add_index_run_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771934900000,
+      "tag": "0007_add_project_slug",
+      "breakpoints": true
     }
   ]
 }

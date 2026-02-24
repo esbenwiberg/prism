@@ -106,8 +106,14 @@ overviewRouter.post("/projects", async (req, res) => {
     // Use a temp placeholder, then update with real clone destination.
     const tempPath = `/tmp/prism-clones/pending-${Date.now()}`;
 
+    // Derive slug (owner/repo) from git URL
+    // e.g. https://github.com/esbenwiberg/hive.git → esbenwiberg/hive
+    const slugMatch = trimmedUrl.match(/[/:]([^/:]+\/[^/.]+?)(?:\.git)?$/);
+    const slug = slugMatch?.[1] ?? undefined;
+
     const project = await createProject(derivedName, tempPath, {
       gitUrl: trimmedUrl,
+      slug,
       credentialId: credId && !isNaN(credId) ? credId : undefined,
     });
 

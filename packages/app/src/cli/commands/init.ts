@@ -9,6 +9,7 @@
  */
 
 import { resolve } from "node:path";
+import { execSync } from "node:child_process";
 import { Command } from "commander";
 import {
   logger,
@@ -31,11 +32,29 @@ const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
   c_sharp: "C#",
 };
 
+/**
+ * Try to derive an owner/repo slug from the git remote origin URL.
+ */
+function deriveSlugFromGitRemote(projectPath: string): string | undefined {
+  try {
+    const remoteUrl = execSync("git remote get-url origin", {
+      cwd: projectPath,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    const match = remoteUrl.match(/[/:]([^/:]+\/[^/.]+?)(?:\.git)?$/);
+    return match?.[1] ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const initCommand = new Command("init")
   .description("Register a project for indexing")
   .argument("[path]", "Path to the project root", ".")
   .option("-n, --name <name>", "Project name (defaults to directory name)")
-  .action(async (pathArg: string, opts: { name?: string }) => {
+  .option("-s, --slug <slug>", "Project slug (owner/repo); derived from git remote if not provided)")
+  .action(async (pathArg: string, opts: { name?: string; slug?: string }) => {
     const projectPath = resolve(pathArg);
     const projectName = opts.name ?? projectPath.split("/").pop() ?? "unnamed";
 
@@ -55,7 +74,10 @@ export const initCommand = new Command("init")
       return;
     }
 
-    const project = await createProject(projectName, projectPath);
+    const slug = opts.slug ?? deriveSlugFromGitRemote(projectPath);
+    const project = await createProject(projectName, projectPath, {
+      ...(slug ? { slug } : {}),
+    });
 
     // Walk the project directory to count files and detect primary language.
     const files = await walkProjectFiles(
