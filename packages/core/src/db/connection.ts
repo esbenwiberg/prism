@@ -16,17 +16,39 @@ export type Database = NodePgDatabase<typeof schema>;
 
 let _pool: pg.Pool | undefined;
 let _db: Database | undefined;
+let _activeConnectionString: string | undefined;
+
+/**
+ * Override the connection string used by `getDb()` when `DATABASE_URL` should
+ * not be read from the environment (e.g. when Prism is used as a library
+ * inside another process that owns `DATABASE_URL`).
+ *
+ * Call with `undefined` to clear the override and fall back to `DATABASE_URL`.
+ */
+export function setActiveConnectionString(connStr: string | undefined): void {
+  if (connStr !== _activeConnectionString) {
+    // Connection string changed — tear down the existing pool so the next
+    // getDb() call creates a fresh one with the new string.
+    if (_pool) {
+      _pool.end().catch(() => {});
+      _pool = undefined;
+      _db = undefined;
+    }
+    _activeConnectionString = connStr;
+  }
+}
 
 /**
  * Return the shared database connection (lazy-initialised).
  *
  * The Pool is created on the first call and reused thereafter.
- * Reads `DATABASE_URL` from `process.env`.
+ * Uses (in order): explicit `setActiveConnectionString()` override,
+ * then `DATABASE_URL` from `process.env`.
  */
 export function getDb(): Database {
   if (_db) return _db;
 
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = _activeConnectionString ?? process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
       "DATABASE_URL environment variable is required but not set.",

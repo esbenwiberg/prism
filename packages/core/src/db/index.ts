@@ -5,6 +5,6 @@
  */
 
 export * from "./schema.js";
-export { getDb, closeDb, type Database } from "./connection.js";
+export { getDb, closeDb, setActiveConnectionString, type Database } from "./connection.js";
 export { runMigrations, type RunMigrationsOptions } from "./migrate.js";
 export * from "./queries/index.js";
