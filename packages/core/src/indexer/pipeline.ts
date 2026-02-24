@@ -1165,7 +1165,13 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
         break;
       }
 
+      const batchNumber = Math.floor(i / batchSize) + 1;
       const batch = summariseInputs.slice(i, i + batchSize);
+
+      logger.info(
+        { batch: batchNumber, batchSize: batch.length, symbolsProcessed, totalSymbols },
+        "Semantic batch starting",
+      );
 
       // Summarise batch
       const summaryResults = await summariseBatch(
@@ -1216,6 +1222,12 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
 
       symbolsProcessed += batch.length;
       await updateIndexRunProgress(indexRun.id, symbolsProcessed);
+
+      const batchCostUsd = summaryResults.reduce((sum, s) => sum + s.costUsd, 0);
+      logger.info(
+        { batch: batchNumber, symbolsProcessed, totalSymbols, batchCostUsd: batchCostUsd.toFixed(4) },
+        "Semantic batch complete",
+      );
     }
 
     const durationMs = Date.now() - startTime;
@@ -1318,6 +1330,7 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
     }
 
     // File-level rollup — update progress after each file
+    logger.info({ projectId: project.id }, "Analysis: starting file rollup");
     const fileSummaries = await rollupFileSummaries(
       project.id,
       functionSummaries,
@@ -1331,7 +1344,10 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       0,
     );
 
+    logger.info({ projectId: project.id, fileSummaries: fileSummaries.length }, "Analysis: file rollup complete");
+
     // Module-level rollup
+    logger.info({ projectId: project.id }, "Analysis: starting module rollup");
     const moduleSummaries = await rollupModuleSummaries(
       project.id,
       fileSummaries,
@@ -1343,7 +1359,10 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       0,
     );
 
+    logger.info({ projectId: project.id, moduleSummaries: moduleSummaries.length }, "Analysis: module rollup complete");
+
     // System-level rollup
+    logger.info({ projectId: project.id }, "Analysis: starting system rollup");
     const systemSummary = await rollupSystemSummary(
       project.id,
       project.name,
@@ -1355,8 +1374,12 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       totalCostUsd += Number(systemSummary.costUsd);
     }
 
+    logger.info({ projectId: project.id, hasSystemSummary: !!systemSummary }, "Analysis: system rollup complete");
+
     // 2. Pattern detection (runs all detectors)
+    logger.info({ projectId: project.id }, "Analysis: starting pattern detection");
     const { count: findingsCount } = await runPatternDetection(project.id);
+    logger.info({ projectId: project.id, findingsCount }, "Analysis: pattern detection complete");
 
     // 3. Gap analysis
     // Re-read files from disk to build doc intent
@@ -1372,6 +1395,7 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
     const intent = assembleIntent(readmeResults, configInfos, commentResults, techStack);
     const intentText = buildIntentDocContent(intent);
 
+    logger.info({ projectId: project.id }, "Analysis: starting gap analysis");
     const gapFindings = await runGapAnalysis(
       project.id,
       project.name,
@@ -1381,6 +1405,8 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       config.analysis,
       budget,
     );
+
+    logger.info({ projectId: project.id, gapFindings: gapFindings.length }, "Analysis: gap analysis complete");
 
     const durationMs = Date.now() - startTime;
     const filesProcessed = fileSummaries.length + moduleSummaries.length + (systemSummary ? 1 : 0);

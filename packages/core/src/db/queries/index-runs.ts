@@ -40,6 +40,7 @@ export async function createIndexRun(
       filesProcessed: 0,
       filesTotal,
       startedAt: new Date(),
+      updatedAt: new Date(),
     })
     .returning();
   return row;
@@ -55,7 +56,7 @@ export async function updateIndexRunProgress(
   const db = getDb();
   await db
     .update(indexRuns)
-    .set({ filesProcessed })
+    .set({ filesProcessed, updatedAt: new Date() })
     .where(eq(indexRuns.id, runId));
 }
 
@@ -77,6 +78,7 @@ export async function completeIndexRun(
       durationMs,
       costUsd: costUsd != null ? costUsd.toFixed(4) : null,
       completedAt: new Date(),
+      updatedAt: new Date(),
     })
     .where(eq(indexRuns.id, runId))
     .returning();
@@ -101,6 +103,7 @@ export async function failIndexRun(
       durationMs,
       error,
       completedAt: new Date(),
+      updatedAt: new Date(),
     })
     .where(eq(indexRuns.id, runId))
     .returning();

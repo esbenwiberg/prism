@@ -43,6 +43,13 @@
       "when": 1771934700000,
       "tag": "0005_add_settings_table",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771934800000,
+      "tag": "0006_add_index_run_heartbeat",
+      "breakpoints": true
     }
   ]
 }

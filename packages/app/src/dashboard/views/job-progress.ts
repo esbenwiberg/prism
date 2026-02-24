@@ -58,6 +58,19 @@ function formatCost(costUsd: string | null | undefined): string {
   return isNaN(num) ? "--" : `$${num.toFixed(4)}`;
 }
 
+function formatRelativeTime(date: Date | string): { text: string; ageSeconds: number } {
+  const now = Date.now();
+  const then = typeof date === "string" ? new Date(date).getTime() : date.getTime();
+  const diffMs = now - then;
+  const seconds = Math.max(0, Math.floor(diffMs / 1000));
+
+  if (seconds < 60) return { text: `${seconds}s ago`, ageSeconds: seconds };
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return { text: `${minutes}m ago`, ageSeconds: seconds };
+  const hours = Math.floor(minutes / 60);
+  return { text: `${hours}h ago`, ageSeconds: seconds };
+}
+
 /** Render a single layer row. */
 function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean, unit = "files"): string {
   const label = LAYER_LABELS[layer] ?? layer;
@@ -152,7 +165,14 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
       <span class="${labelClass}">${escapeHtml(label)}</span>
       ${progressText}
       ${durationText}
-      ${status === "running" ? `<span class="ml-auto text-xs text-blue-400 font-medium animate-pulse">running</span>` : ""}
+      ${status === "running" ? (() => {
+        if (run.updatedAt) {
+          const { text, ageSeconds } = formatRelativeTime(run.updatedAt);
+          const color = ageSeconds < 30 ? "text-emerald-400" : ageSeconds < 120 ? "text-amber-400" : "text-red-400";
+          return `<span class="ml-auto text-xs ${color} font-medium">active ${escapeHtml(text)}</span>`;
+        }
+        return `<span class="ml-auto text-xs text-blue-400 font-medium animate-pulse">running</span>`;
+      })() : ""}
     </div>${progressBar}
   </div>`;
 }

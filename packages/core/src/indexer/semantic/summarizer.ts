@@ -216,7 +216,7 @@ export async function summariseBatch(
 
     // Skip if we already have a summary with the same hash
     if (existingHashes.has(inputHash)) {
-      logger.debug(
+      logger.info(
         { symbol: input.symbol.name, filePath: input.filePath },
         "Skipping symbol — summary unchanged",
       );
@@ -254,7 +254,7 @@ export async function summariseBatch(
         targetId,
       });
 
-      logger.debug(
+      logger.info(
         {
           symbol: input.symbol.name,
           inputTokens: response.usage.input_tokens,
