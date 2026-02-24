@@ -7,7 +7,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { jobs, indexRuns, projects } from "../schema.js";
 import type { JobStatus, JobType } from "../../domain/types.js";
@@ -178,6 +178,53 @@ export async function resetStaleJobs(): Promise<number> {
   }
 
   return staleJobs.length;
+}
+
+/**
+ * Cancel a job by setting its status to "cancelled".
+ *
+ * Also sets `completedAt` and fails any running index runs for the
+ * job's project so layer progress shows the correct state.
+ */
+export async function cancelJob(id: number): Promise<JobRow> {
+  const db = getDb();
+  const [row] = await db
+    .update(jobs)
+    .set({
+      status: "cancelled" satisfies JobStatus,
+      completedAt: new Date(),
+    })
+    .where(eq(jobs.id, id))
+    .returning();
+
+  // Fail any running index runs for this project
+  await db
+    .update(indexRuns)
+    .set({
+      status: "failed",
+      error: "Cancelled by user",
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(indexRuns.projectId, row.projectId),
+        eq(indexRuns.status, "running"),
+      ),
+    );
+
+  return row;
+}
+
+/**
+ * Get just the status of a job (lightweight polling query).
+ */
+export async function getJobStatus(id: number): Promise<JobStatus | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .select({ status: jobs.status })
+    .from(jobs)
+    .where(eq(jobs.id, id));
+  return row?.status as JobStatus | undefined;
 }
 
 // ---------------------------------------------------------------------------

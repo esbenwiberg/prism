@@ -16,6 +16,7 @@ import {
   decryptToken,
   runPipeline,
   getConfig,
+  getJobStatus,
   createBudgetTracker,
   createIndexRun,
   updateIndexRunProgress,
@@ -62,14 +63,16 @@ export async function executeJob(job: JobRow): Promise<ExecutionResult> {
     "Executing job",
   );
 
+  const shouldCancel = async () => (await getJobStatus(job.id)) === "cancelled";
+
   try {
     switch (jobType) {
       case "index":
-        await executeIndexJob(job.projectId, options);
+        await executeIndexJob(job.projectId, options, shouldCancel);
         break;
 
       case "blueprint":
-        await executeBlueprintJob(job.projectId, options);
+        await executeBlueprintJob(job.projectId, options, shouldCancel);
         break;
 
       default:
@@ -103,6 +106,7 @@ export async function executeJob(job: JobRow): Promise<ExecutionResult> {
 async function executeIndexJob(
   projectId: number,
   options: JobOptions,
+  shouldCancel: () => Promise<boolean>,
 ): Promise<void> {
   const project = await getProject(projectId);
   if (!project) {
@@ -157,6 +161,7 @@ async function executeIndexJob(
     await runPipeline(updatedProject, {
       fullReindex: options.fullReindex ?? true,
       ...(options.layers ? { layers: options.layers as LayerName[] } : {}),
+      shouldCancel,
     });
   } finally {
     // Always cleanup the clone directory
@@ -180,6 +185,7 @@ async function executeIndexJob(
 async function executeBlueprintJob(
   projectId: number,
   options: JobOptions,
+  shouldCancel: () => Promise<boolean>,
 ): Promise<void> {
   const project = await getProject(projectId);
   if (!project) {
@@ -200,6 +206,11 @@ async function executeBlueprintJob(
       runId = run.id;
     } else {
       await updateIndexRunProgress(runId, phasesComplete);
+    }
+
+    // Check for cancellation between blueprint phases
+    if (await shouldCancel()) {
+      throw new Error("Job cancelled by user");
     }
   };
 

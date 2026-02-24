@@ -471,6 +471,7 @@ export async function runPipeline(
   options: {
     layers?: LayerName[];
     fullReindex?: boolean;
+    shouldCancel?: () => Promise<boolean>;
   } = {},
 ): Promise<LayerResult[]> {
   const config = getConfig();
@@ -502,6 +503,15 @@ export async function runPipeline(
   );
 
   for (const layer of layers) {
+    // Check for cancellation before each layer
+    if (options.shouldCancel) {
+      const cancelled = await options.shouldCancel();
+      if (cancelled) {
+        logger.info({ projectId: project.id, layer }, "Pipeline cancelled before layer");
+        break;
+      }
+    }
+
     const startTime = Date.now();
     let result: LayerResult;
 

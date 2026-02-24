@@ -91,6 +91,12 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
       </svg>
     </div>`;
+  } else if (status === "cancelled") {
+    icon = `<div class="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+      <svg class="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="1"/>
+      </svg>
+    </div>`;
   } else {
     icon = `<div class="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0"></div>`;
   }
@@ -101,6 +107,8 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
     ? "text-sm text-slate-300 w-24"
     : status === "failed"
     ? "text-sm text-red-400 w-24"
+    : status === "cancelled"
+    ? "text-sm text-amber-400 w-24"
     : "text-sm text-slate-500 w-24";
 
   let progressText = "";
@@ -198,10 +206,11 @@ export function jobProgressFragment(data: JobProgressData): string {
 
   // Status badge colours
   const statusColours: Record<string, string> = {
-    completed: "text-emerald-400",
-    running:   "text-blue-400",
-    failed:    "text-red-400",
-    pending:   "text-slate-400",
+    completed:  "text-emerald-400",
+    running:    "text-blue-400",
+    failed:     "text-red-400",
+    pending:    "text-slate-400",
+    cancelled:  "text-amber-400",
   };
   const statusColour = statusColours[latestJob.status] ?? "text-slate-400";
 
@@ -239,6 +248,15 @@ export function jobProgressFragment(data: JobProgressData): string {
       <div class="flex items-center gap-4 text-xs text-slate-400">
         <span>${escapeHtml(elapsed)}</span>
         ${totalCost > 0 ? `<span class="font-mono">${formatCost(totalCost.toFixed(4))}</span>` : ""}
+        ${isActive ? `<button
+          hx-post="/projects/${projectId}/cancel-job"
+          hx-target="#job-progress"
+          hx-swap="outerHTML"
+          class="ml-2 inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+        >
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          Stop
+        </button>` : ""}
       </div>
     </div>
     <div class="divide-y divide-slate-700/50">

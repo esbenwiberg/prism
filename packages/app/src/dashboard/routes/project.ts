@@ -9,6 +9,7 @@ import {
   getProject,
   countFindingsByProjectId,
   createJob,
+  cancelJob,
   getJobsByProjectId,
   getIndexRunsByProjectId,
   logger,
@@ -171,6 +172,43 @@ projectRouter.post("/projects/:id/run-layer", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "Failed to queue layer job");
     res.status(500).send("Failed to queue layer job");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /projects/:id/cancel-job — cancel a running or pending job
+// ---------------------------------------------------------------------------
+
+projectRouter.post("/projects/:id/cancel-job", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).send("Invalid project ID");
+      return;
+    }
+
+    const jobs = await getJobsByProjectId(id);
+    // Find the latest active (pending or running) job
+    const activeJob = [...jobs].reverse().find(
+      (j) => j.status === "pending" || j.status === "running",
+    );
+
+    if (activeJob) {
+      await cancelJob(activeJob.id);
+      logger.info({ jobId: activeJob.id, projectId: id }, "Job cancelled by user");
+    }
+
+    // Return updated progress fragment
+    const updatedJobs = await getJobsByProjectId(id);
+    const indexRuns = await getIndexRunsByProjectId(id);
+    const latestJob = updatedJobs.length > 0 ? updatedJobs[updatedJobs.length - 1] : null;
+
+    res.send(
+      jobProgressFragment({ projectId: id, latestJob, indexRuns }),
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to cancel job");
+    res.status(500).send("Failed to cancel job");
   }
 });
 

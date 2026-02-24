@@ -139,6 +139,8 @@ export {
   claimNextJob,
   completeJob,
   failJob,
+  cancelJob,
+  getJobStatus,
   getJobsByProjectId,
   getPendingJobCount,
   resetStaleJobs,

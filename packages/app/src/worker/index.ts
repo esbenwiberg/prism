@@ -13,6 +13,7 @@ import {
   claimNextJob,
   completeJob,
   failJob,
+  getJobStatus,
   resetStaleJobs,
 } from "@prism/core";
 
@@ -91,7 +92,11 @@ export async function startWorker(): Promise<void> {
       try {
         const result = await executeJob(job);
 
-        if (result.success) {
+        // Re-check the job status — it may have been cancelled while running
+        const currentStatus = await getJobStatus(job.id);
+        if (currentStatus === "cancelled") {
+          logger.info({ jobId: job.id }, "Job was cancelled, skipping status update");
+        } else if (result.success) {
           await completeJob(job.id);
           logger.info({ jobId: job.id }, "Job marked completed");
         } else {
@@ -110,7 +115,11 @@ export async function startWorker(): Promise<void> {
         );
 
         try {
-          await failJob(job.id, message);
+          // Don't overwrite cancelled status
+          const currentStatus = await getJobStatus(job.id);
+          if (currentStatus !== "cancelled") {
+            await failJob(job.id, message);
+          }
         } catch (failErr: unknown) {
           logger.error(
             {

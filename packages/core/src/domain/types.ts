@@ -62,7 +62,7 @@ export type FindingSeverity =
 export type SummaryLevel = "function" | "file" | "module" | "system";
 
 /** Status of a background job. */
-export type JobStatus = "pending" | "running" | "completed" | "failed";
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 /** Type of background job. */
 export type JobType = "index" | "blueprint";
