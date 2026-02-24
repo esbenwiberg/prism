@@ -5,6 +5,7 @@
  * GET  /projects/:id/blueprints/:planId                  — plan detail with phases
  * GET  /blueprints/phases/:phaseId/export                — export phase as markdown
  * GET  /blueprints/plans/:planId/export                  — export full plan as markdown
+ * POST /blueprints/phases/:phaseId/detail                — on-demand phase detailing (Pass 2)
  * POST /blueprints/phases/:phaseId/chat                  — AI phase review chat
  * POST /blueprints/phases/:phaseId/chat/apply/:entryIndex — apply proposed edits
  * POST /blueprints/phases/:phaseId/accept                — mark phase as accepted
@@ -20,12 +21,10 @@ import {
   getBlueprintPhasesByPlanId,
   getBlueprintMilestonesByPhaseId,
   getBlueprintPhase,
-  getBlueprintMilestone,
   updateBlueprintPhaseStatus,
   updateBlueprintPhaseNotes,
   updateBlueprintPhaseChatHistory,
   updateBlueprintMilestoneField,
-  updateBlueprintMilestoneDetails,
 } from "@prism/core";
 
 import {
@@ -34,12 +33,11 @@ import {
   renderFullBlueprintMarkdown,
 } from "../../blueprint/markdown.js";
 
-import { expandPhaseMilestones } from "../../blueprint/generator.js";
+import { detailPhaseById } from "../../blueprint/generator.js";
 
 import type {
   MasterPlanOutline,
   BlueprintPhase,
-  PhaseMilestone,
   Risk,
 } from "../../blueprint/types.js";
 
@@ -532,7 +530,73 @@ blueprintsRouter.post("/blueprints/phases/:phaseId/notes", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Expand milestone descriptions (for milestones that have no details)
+// Detail phase — on-demand Pass 2 for a single phase
+// ---------------------------------------------------------------------------
+
+blueprintsRouter.post("/blueprints/phases/:phaseId/detail", async (req, res) => {
+  const phaseId = parseInt(req.params.phaseId, 10);
+  if (isNaN(phaseId)) {
+    res.status(400).send("Invalid phase ID");
+    return;
+  }
+
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    res.status(404).send("Phase not found");
+    return;
+  }
+
+  try {
+    const updatedMilestones = await detailPhaseById(phaseId, "claude-sonnet-4-6");
+
+    if (!updatedMilestones) {
+      res.status(500).send("Failed to generate phase details");
+      return;
+    }
+
+    const milestonesHtml = updatedMilestones
+      .map((ms) =>
+        renderMilestoneCard({
+          id: ms.id,
+          milestoneOrder: ms.milestoneOrder,
+          title: ms.title,
+          intent: ms.intent,
+          keyFiles: ms.keyFiles as string[] | null,
+          verification: ms.verification,
+          details: ms.details,
+          decisions: ms.decisions as string[] | null,
+        }),
+      )
+      .join("");
+
+    // Return updated milestones + OOB swap of the phase footer to show Accept/Discuss
+    const footerHtml = `
+      <div id="phase-footer-${phaseId}" hx-swap-oob="innerHTML">
+        <span id="phase-status-badge-${phaseId}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">DRAFT</span>
+        <button
+          hx-post="/blueprints/phases/${phaseId}/accept"
+          hx-target="#phase-status-badge-${phaseId}"
+          hx-swap="outerHTML"
+          class="text-xs font-medium text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+          Accept Phase
+        </button>
+        <button
+          onclick="document.getElementById('chat-panel-${phaseId}').style.display = document.getElementById('chat-panel-${phaseId}').style.display === 'none' ? 'block' : 'none'"
+          class="text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+          Discuss
+        </button>
+      </div>`;
+
+    res.send(milestonesHtml + footerHtml);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("detail-phase error:", msg);
+    res.status(500).send(`Error generating details: ${escapeForHtml(msg)}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Expand milestone descriptions (alias for detail — kept for backward compat)
 // ---------------------------------------------------------------------------
 
 blueprintsRouter.post("/blueprints/phases/:phaseId/expand-milestones", async (req, res) => {
@@ -548,60 +612,50 @@ blueprintsRouter.post("/blueprints/phases/:phaseId/expand-milestones", async (re
     return;
   }
 
-  const milestoneRows = await getBlueprintMilestonesByPhaseId(phaseId);
+  try {
+    const updatedMilestones = await detailPhaseById(phaseId, "claude-sonnet-4-6");
 
-  // Only expand milestones that are missing meaningful details
-  const toExpand = milestoneRows.filter(
-    (ms) => !ms.details || ms.details.trim().length < 30,
-  );
+    // Return updated milestones HTML (whether expansion succeeded or not)
+    const rows = updatedMilestones ?? await getBlueprintMilestonesByPhaseId(phaseId);
+    const milestonesHtml = rows
+      .map((ms) =>
+        renderMilestoneCard({
+          id: ms.id,
+          milestoneOrder: ms.milestoneOrder,
+          title: ms.title,
+          intent: ms.intent,
+          keyFiles: ms.keyFiles as string[] | null,
+          verification: ms.verification,
+          details: ms.details,
+          decisions: ms.decisions as string[] | null,
+        }),
+      )
+      .join("");
 
-  if (toExpand.length > 0) {
-    try {
-      const expansions = await expandPhaseMilestones(
-        phaseRow.title,
-        phaseRow.intent ?? "",
-        toExpand.map((ms) => ({ milestoneOrder: ms.milestoneOrder, title: ms.title })),
-        "claude-sonnet-4-6",
-      );
+    res.send(milestonesHtml);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("expand-milestones error:", msg);
 
-      if (expansions) {
-        for (const exp of expansions) {
-          const ms = toExpand.find((m) => m.milestoneOrder === exp.milestoneOrder);
-          if (ms) {
-            await updateBlueprintMilestoneDetails(ms.id, {
-              intent: exp.intent || null,
-              keyFiles: exp.keyFiles.length > 0 ? exp.keyFiles : null,
-              verification: exp.verification || null,
-              details: exp.details || null,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      // Log but fall through — return whatever we have rather than showing an error
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("expand-milestones error:", msg);
-    }
+    // Fall through with current data
+    const rows = await getBlueprintMilestonesByPhaseId(phaseId);
+    const milestonesHtml = rows
+      .map((ms) =>
+        renderMilestoneCard({
+          id: ms.id,
+          milestoneOrder: ms.milestoneOrder,
+          title: ms.title,
+          intent: ms.intent,
+          keyFiles: ms.keyFiles as string[] | null,
+          verification: ms.verification,
+          details: ms.details,
+          decisions: ms.decisions as string[] | null,
+        }),
+      )
+      .join("");
+
+    res.send(milestonesHtml);
   }
-
-  // Return updated milestones HTML (whether expansion succeeded or not)
-  const updatedRows = await getBlueprintMilestonesByPhaseId(phaseId);
-  const milestonesHtml = updatedRows
-    .map((ms) =>
-      renderMilestoneCard({
-        id: ms.id,
-        milestoneOrder: ms.milestoneOrder,
-        title: ms.title,
-        intent: ms.intent,
-        keyFiles: ms.keyFiles as string[] | null,
-        verification: ms.verification,
-        details: ms.details,
-        decisions: ms.decisions as string[] | null,
-      }),
-    )
-    .join("");
-
-  res.send(milestonesHtml);
 });
 
 // ---------------------------------------------------------------------------

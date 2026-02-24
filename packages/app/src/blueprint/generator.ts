@@ -1,9 +1,8 @@
 /**
  * Blueprint generator — Layer 5 (hierarchical).
  *
- * Two-pass LLM generation:
- *   Pass 1 — Master plan: produces phases with rough milestone titles.
- *   Pass 2 — Phase details: one LLM call per phase for detailed milestones.
+ * Pass 1 — Master plan: produces phases with rough milestone titles.
+ * Pass 2 — Phase details: called on-demand per phase via detailPhaseById().
  *
  * Results stored in prism_blueprint_plans / phases / milestones.
  */
@@ -23,6 +22,12 @@ import {
   insertBlueprintPlan,
   insertBlueprintPhase,
   bulkInsertBlueprintMilestones,
+  getBlueprintPhase,
+  getBlueprintMilestonesByPhaseId,
+  getBlueprintPhasesByPlanId,
+  getBlueprintPlan,
+  updateBlueprintMilestoneDetails,
+  updateBlueprintPhaseCostUsd,
   type BlueprintPlanRow,
   type BlueprintPhaseRow,
   type BlueprintMilestoneRow,
@@ -42,9 +47,6 @@ import type {
 
 const SONNET_INPUT_COST_PER_TOKEN = 0.000003;
 const SONNET_OUTPUT_COST_PER_TOKEN = 0.000015;
-
-/** Pass 1 gets 30% of total budget, pass 2 gets 70%. */
-const PASS_1_BUDGET_FRACTION = 0.3;
 
 // ---------------------------------------------------------------------------
 // Prompt loading
@@ -222,9 +224,7 @@ export async function generateHierarchicalBlueprint(
   // -----------------------------------------------------------------------
   // Pass 1 — Master plan
   // -----------------------------------------------------------------------
-  const pass1Budget = budget.budgetUsd * PASS_1_BUDGET_FRACTION;
-
-  logger.info({ pass1Budget: pass1Budget.toFixed(2) }, "Pass 1: generating master plan");
+  logger.info("Pass 1: generating master plan");
 
   const masterPlan = await generateMasterPlan(
     client,
@@ -266,7 +266,7 @@ export async function generateHierarchicalBlueprint(
   });
 
   // -----------------------------------------------------------------------
-  // Pass 2 — Phase details
+  // Persist phases + milestones (headers only — Pass 2 is on-demand)
   // -----------------------------------------------------------------------
   const result: HierarchicalBlueprintResult = {
     plan: planRow,
@@ -274,86 +274,31 @@ export async function generateHierarchicalBlueprint(
   };
 
   for (let i = 0; i < masterPlan.phases.length; i++) {
-    if (budget.exceeded) {
-      logger.warn({ phase: i + 1 }, "Budget exceeded — stopping phase detail generation");
-      break;
-    }
-
     const phaseOutline = masterPlan.phases[i];
-    const previousPhases = masterPlan.phases.slice(0, i);
-    const nextPhases = masterPlan.phases.slice(i + 1);
 
-    logger.info(
-      { phaseOrder: i + 1, title: phaseOutline.title },
-      "Pass 2: generating phase details",
-    );
-
-    let phaseDetail = await generatePhaseDetail(
-      client,
-      projectName,
-      systemSummary,
-      masterPlan,
-      phaseOutline,
-      i + 1,
-      masterPlan.phases.length,
-      previousPhases,
-      nextPhases,
-      filteredFindings,
-      config,
-      budget,
-    );
-
-    // Retry once if milestones came back with empty details (likely truncated output).
-    if (!budget.exceeded && phaseDetail && milestonesHaveEmptyDetails(phaseDetail.milestones)) {
-      logger.warn(
-        { phaseOrder: i + 1, title: phaseOutline.title },
-        "Phase milestones have empty details — retrying pass 2",
-      );
-      const retry = await generatePhaseDetail(
-        client,
-        projectName,
-        systemSummary,
-        masterPlan,
-        phaseOutline,
-        i + 1,
-        masterPlan.phases.length,
-        previousPhases,
-        nextPhases,
-        filteredFindings,
-        config,
-        budget,
-      );
-      if (retry && !milestonesHaveEmptyDetails(retry.milestones)) {
-        phaseDetail = retry;
-      }
-    }
-
-    // Persist phase
-    const costSoFar = budget.spentUsd;
     const phaseRow = await insertBlueprintPhase({
       planId: planRow.id,
       projectId,
       phaseOrder: i + 1,
-      title: phaseDetail?.title ?? phaseOutline.title,
-      intent: phaseDetail?.intent ?? phaseOutline.intent,
-      milestoneCount: phaseDetail?.milestones.length ?? phaseOutline.milestones.length,
+      title: phaseOutline.title,
+      intent: phaseOutline.intent,
+      milestoneCount: phaseOutline.milestones.length,
       model: config.model,
-      costUsd: (budget.spentUsd - costSoFar).toFixed(4),
+      costUsd: "0",
     });
 
-    // Persist milestones
-    const milestones = phaseDetail?.milestones ?? fallbackMilestones(phaseOutline);
+    // Persist milestones with just titles — details filled on-demand
     const milestoneRows = await bulkInsertBlueprintMilestones(
-      milestones.map((ms, j) => ({
+      phaseOutline.milestones.map((title, j) => ({
         phaseId: phaseRow.id,
         projectId,
         milestoneOrder: j + 1,
-        title: ms.title,
-        intent: ms.intent ?? null,
-        keyFiles: ms.keyFiles ?? null,
-        verification: ms.verification ?? null,
-        details: ms.details ?? null,
-        decisions: ms.decisions ?? null,
+        title,
+        intent: null,
+        keyFiles: null,
+        verification: null,
+        details: null,
+        decisions: null,
       })),
     );
 
@@ -368,7 +313,7 @@ export async function generateHierarchicalBlueprint(
       totalMilestones: result.phases.reduce((n, p) => n + p.milestones.length, 0),
       costUsd: budget.spentUsd.toFixed(4),
     },
-    "Hierarchical blueprint generation complete",
+    "Hierarchical blueprint generation complete (headers only — detail on-demand)",
   );
 
   return result;
@@ -462,6 +407,162 @@ function parseExpansions(rawText: string): MilestoneExpansion[] | null {
 }
 
 // ---------------------------------------------------------------------------
+// On-demand phase detailing
+// ---------------------------------------------------------------------------
+
+/**
+ * Detail a single phase by its DB id. Loads context from DB,
+ * calls the LLM to generate full milestone details, and persists them.
+ *
+ * Returns the updated milestone rows, or null on failure.
+ */
+export async function detailPhaseById(
+  phaseId: number,
+  model: string,
+): Promise<BlueprintMilestoneRow[] | null> {
+  const phaseRow = await getBlueprintPhase(phaseId);
+  if (!phaseRow) {
+    logger.warn({ phaseId }, "detailPhaseById: phase not found");
+    return null;
+  }
+
+  const planRow = await getBlueprintPlan(phaseRow.planId);
+  if (!planRow) {
+    logger.warn({ planId: phaseRow.planId }, "detailPhaseById: plan not found");
+    return null;
+  }
+
+  // Load sibling phases for context
+  const allPhaseRows = await getBlueprintPhasesByPlanId(phaseRow.planId);
+  const phaseIndex = allPhaseRows.findIndex((p) => p.id === phaseId);
+
+  // Load summaries and findings
+  const [systemSummaries, findings] = await Promise.all([
+    getSummariesByLevel(planRow.projectId, "system"),
+    getFindingsByProjectId(planRow.projectId),
+  ]);
+  const systemSummary = systemSummaries[0]?.content ?? "";
+
+  // Reconstruct MasterPlanOutline
+  const phaseOutlines: PhaseOutline[] = [];
+  for (const pr of allPhaseRows) {
+    const ms = await getBlueprintMilestonesByPhaseId(pr.id);
+    phaseOutlines.push({
+      title: pr.title,
+      intent: pr.intent ?? "",
+      milestones: ms.map((m) => m.title),
+    });
+  }
+
+  const masterPlan: MasterPlanOutline = {
+    title: planRow.title,
+    summary: planRow.summary,
+    nonGoals: (planRow.nonGoals as string[]) ?? [],
+    acceptanceCriteria: (planRow.acceptanceCriteria as string[]) ?? [],
+    risks: (planRow.risks as Array<{ risk: string; severity: "low" | "medium" | "high"; mitigation: string }>) ?? [],
+    phases: phaseOutlines,
+  };
+
+  const phaseOutline = phaseOutlines[phaseIndex];
+  const previousPhases = phaseOutlines.slice(0, phaseIndex);
+  const nextPhases = phaseOutlines.slice(phaseIndex + 1);
+
+  const client = new Anthropic();
+  const budget = createBudgetTrackerForDetail();
+  const config: BlueprintConfig = { enabled: true, model, budgetUsd: 5 };
+
+  logger.info(
+    { phaseId, phaseOrder: phaseRow.phaseOrder, title: phaseRow.title },
+    "Detailing phase on-demand",
+  );
+
+  let phaseDetail = await generatePhaseDetail(
+    client,
+    planRow.title,
+    systemSummary,
+    masterPlan,
+    phaseOutline,
+    phaseRow.phaseOrder,
+    allPhaseRows.length,
+    previousPhases,
+    nextPhases,
+    findings,
+    config,
+    budget,
+  );
+
+  // Retry once if milestones came back with empty details
+  if (phaseDetail && milestonesHaveEmptyDetails(phaseDetail.milestones)) {
+    logger.warn({ phaseId }, "Phase milestones have empty details — retrying");
+    const retry = await generatePhaseDetail(
+      client,
+      planRow.title,
+      systemSummary,
+      masterPlan,
+      phaseOutline,
+      phaseRow.phaseOrder,
+      allPhaseRows.length,
+      previousPhases,
+      nextPhases,
+      findings,
+      config,
+      budget,
+    );
+    if (retry && !milestonesHaveEmptyDetails(retry.milestones)) {
+      phaseDetail = retry;
+    }
+  }
+
+  if (!phaseDetail) {
+    logger.warn({ phaseId }, "Phase detail generation returned null");
+    return null;
+  }
+
+  // Update existing milestones with the details
+  const existingMilestones = await getBlueprintMilestonesByPhaseId(phaseId);
+  for (const ms of phaseDetail.milestones) {
+    const existing = existingMilestones.find(
+      (em) => em.title === ms.title || em.milestoneOrder === phaseDetail!.milestones.indexOf(ms) + 1,
+    );
+    if (existing) {
+      await updateBlueprintMilestoneDetails(existing.id, {
+        intent: ms.intent || null,
+        keyFiles: ms.keyFiles?.length ? ms.keyFiles : null,
+        verification: ms.verification || null,
+        details: ms.details || null,
+      });
+    }
+  }
+
+  // Record cost on the phase
+  await updateBlueprintPhaseCostUsd(phaseId, budget.spentUsd.toFixed(4));
+
+  logger.info(
+    { phaseId, costUsd: budget.spentUsd.toFixed(4) },
+    "Phase detail generation complete",
+  );
+
+  return getBlueprintMilestonesByPhaseId(phaseId);
+}
+
+/** Lightweight budget tracker for on-demand detailing (no global budget). */
+function createBudgetTrackerForDetail(): BudgetTracker {
+  return {
+    budgetUsd: 5,
+    spentUsd: 0,
+    get exceeded() {
+      return this.spentUsd >= this.budgetUsd;
+    },
+    get remaining() {
+      return Math.max(0, this.budgetUsd - this.spentUsd);
+    },
+    record(amountUsd: number) {
+      this.spentUsd += amountUsd;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Legacy API (backward compat during migration)
 // ---------------------------------------------------------------------------
 
@@ -544,7 +645,7 @@ async function generateMasterPlan(
 // Pass 2 — Per-phase detail generation
 // ---------------------------------------------------------------------------
 
-async function generatePhaseDetail(
+export async function generatePhaseDetail(
   client: Anthropic,
   projectName: string,
   systemSummary: string,

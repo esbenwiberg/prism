@@ -251,52 +251,78 @@ function blueprintDetailContent(data: BlueprintDetailPageData): string {
 // Phase card rendering
 // ---------------------------------------------------------------------------
 
+/** Check if a phase has been detailed (any milestone has intent, details, or keyFiles). */
+function isPhaseDetailed(phase: PhaseViewData): boolean {
+  return phase.milestones.some(
+    (ms) => (ms.intent && ms.intent.trim().length > 0) ||
+            (ms.details && ms.details.trim().length > 0) ||
+            (ms.keyFiles && ms.keyFiles.length > 0),
+  );
+}
+
 function renderPhaseCard(phase: PhaseViewData): string {
+  const detailed = isPhaseDetailed(phase);
   const isAccepted = phase.status === "accepted";
+
   const statusBadge = isAccepted
     ? `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">ACCEPTED</span>`
     : `<span id="phase-status-badge-${phase.id}" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">DRAFT</span>`;
 
-  const costBadge = phase.costUsd
+  const costBadge = phase.costUsd && phase.costUsd !== "0" && phase.costUsd !== "0.0000"
     ? `<span class="text-xs font-mono text-slate-500">gen: $${escapeHtml(phase.costUsd)}</span>`
     : "";
 
-  const acceptBtn = isAccepted ? "" : `
-    <button
-      hx-post="/blueprints/phases/${phase.id}/accept"
-      hx-target="#phase-status-badge-${phase.id}"
-      hx-swap="outerHTML"
-      class="text-xs font-medium text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-full px-2.5 py-0.5 transition-colors">
-      Accept Phase
-    </button>`;
+  const milestonesHtml = detailed
+    ? phase.milestones.map((ms) => renderMilestoneCard(ms)).join("")
+    : renderCompactMilestones(phase);
 
-  const discussBtn = `
-    <button
-      onclick="document.getElementById('chat-panel-${phase.id}').style.display = document.getElementById('chat-panel-${phase.id}').style.display === 'none' ? 'block' : 'none'"
-      class="text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors">
-      Discuss
-    </button>`;
+  // Footer buttons depend on whether the phase has been detailed
+  let footerContent: string;
+  if (detailed) {
+    const acceptBtn = isAccepted ? "" : `
+      <button
+        hx-post="/blueprints/phases/${phase.id}/accept"
+        hx-target="#phase-status-badge-${phase.id}"
+        hx-swap="outerHTML"
+        class="text-xs font-medium text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+        Accept Phase
+      </button>`;
 
-  const hasEmptyMilestones = phase.milestones.some((ms) => !ms.intent && !ms.details);
-  const expandBtn = hasEmptyMilestones
-    ? `<button
-        hx-post="/blueprints/phases/${phase.id}/expand-milestones"
+    const discussBtn = `
+      <button
+        onclick="document.getElementById('chat-panel-${phase.id}').style.display = document.getElementById('chat-panel-${phase.id}').style.display === 'none' ? 'block' : 'none'"
+        class="text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+        Discuss
+      </button>`;
+
+    footerContent = `${statusBadge} ${acceptBtn} ${discussBtn}`;
+  } else {
+    const detailBtn = `
+      <button
+        hx-post="/blueprints/phases/${phase.id}/detail"
         hx-target="#phase-milestones-${phase.id}"
         hx-swap="innerHTML"
         hx-disabled-elt="this"
-        class="group/expbtn inline-flex items-center gap-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 border border-amber-500/30 rounded-full px-2.5 py-0.5 transition-colors disabled:opacity-60 disabled:cursor-wait">
-        <span class="group-disabled/expbtn:hidden">Generate descriptions</span>
-        <span class="hidden group-disabled/expbtn:inline-flex items-center gap-1.5">
+        class="group/detbtn inline-flex items-center gap-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors disabled:opacity-60 disabled:cursor-wait">
+        <span class="group-disabled/detbtn:hidden">Detail this phase</span>
+        <span class="hidden group-disabled/detbtn:inline-flex items-center gap-1.5">
           <svg class="animate-spin h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"/>
             <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" class="opacity-75"/>
           </svg>
-          Generating…
+          Detailing…
         </span>
-      </button>`
-    : "";
+      </button>`;
 
-  const milestonesHtml = phase.milestones.map((ms) => renderMilestoneCard(ms)).join("");
+    const discussBtn = `
+      <button
+        onclick="document.getElementById('chat-panel-${phase.id}').style.display = document.getElementById('chat-panel-${phase.id}').style.display === 'none' ? 'block' : 'none'"
+        class="text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 rounded-full px-2.5 py-0.5 transition-colors">
+        Discuss
+      </button>`;
+
+    footerContent = `${statusBadge} ${detailBtn} ${discussBtn}`;
+  }
 
   return `
 <details class="rounded-xl border border-slate-700 bg-slate-800 mb-3" open>
@@ -320,11 +346,8 @@ function renderPhaseCard(phase: PhaseViewData): string {
     </div>
 
     <!-- Phase footer: status + actions -->
-    <div class="mt-4 pt-4 border-t border-slate-700 flex items-center gap-3 flex-wrap">
-      ${statusBadge}
-      ${acceptBtn}
-      ${expandBtn}
-      ${discussBtn}
+    <div id="phase-footer-${phase.id}" class="mt-4 pt-4 border-t border-slate-700 flex items-center gap-3 flex-wrap">
+      ${footerContent}
     </div>
 
     <!-- Chat panel (hidden by default) -->
@@ -335,53 +358,106 @@ function renderPhaseCard(phase: PhaseViewData): string {
 </details>`;
 }
 
+/** Render milestones as a compact numbered list (headers only, no cards). */
+function renderCompactMilestones(phase: PhaseViewData): string {
+  if (phase.milestones.length === 0) {
+    return `<p class="text-xs text-slate-500 italic">No milestones.</p>`;
+  }
+
+  const items = phase.milestones.map((ms) => `
+    <li class="flex items-start gap-3 py-1.5">
+      <span class="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-semibold flex items-center justify-center">${ms.milestoneOrder}</span>
+      <span class="text-sm text-slate-300">${escapeHtml(ms.title)}</span>
+    </li>`).join("");
+
+  return `<ol class="list-none space-y-0.5 mb-2">${items}</ol>`;
+}
+
 // ---------------------------------------------------------------------------
 // Milestone card rendering (exported for use in routes)
 // ---------------------------------------------------------------------------
 
 export function renderMilestoneCard(ms: MilestoneViewData): string {
   let html = `
-<div id="milestone-card-${ms.id}" class="border-l-2 border-slate-600 pl-4 mb-4">
-  <div class="text-sm font-semibold text-slate-200 mb-1">
-    ${ms.milestoneOrder}. ${escapeHtml(ms.title)}
-  </div>`;
+<div id="milestone-card-${ms.id}" class="rounded-lg border border-slate-700 bg-slate-800/50 p-4 mb-3">
+  <h4 class="text-sm font-semibold text-slate-200 mb-2">
+    <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-bold mr-2">${ms.milestoneOrder}</span>
+    ${escapeHtml(ms.title)}
+  </h4>`;
 
   if (ms.intent) {
-    html += `<p class="text-xs text-slate-400 mb-1">${escapeHtml(ms.intent)}</p>`;
+    html += `<div class="rounded-md bg-slate-900/50 border-l-2 border-purple-500/40 px-3 py-2 mb-3">
+      <p class="text-xs text-slate-300">${escapeHtml(ms.intent)}</p>
+    </div>`;
   }
 
   if (ms.details) {
-    html += `<p class="text-xs text-slate-400 mb-1 whitespace-pre-wrap">${escapeHtml(ms.details)}</p>`;
+    html += `<div class="text-xs text-slate-400 mb-3">${renderDetails(ms.details)}</div>`;
   }
 
   if (!ms.intent && !ms.details) {
-    html += `<p class="text-xs text-slate-600 italic mb-1">No description — use Discuss to elaborate on this milestone.</p>`;
+    html += `<p class="text-xs text-slate-600 italic mb-2">No description — use Discuss to elaborate on this milestone.</p>`;
   }
 
   if (ms.keyFiles && ms.keyFiles.length > 0) {
-    html += `<div class="mt-1 text-xs text-slate-400">
-      <span class="font-medium">Key files:</span> ${ms.keyFiles.map((f) => `<code class="font-mono bg-slate-900 px-1.5 py-0.5 rounded text-slate-300">${escapeHtml(f)}</code>`).join(", ")}
+    html += `<div class="flex flex-wrap gap-1.5 mb-3">
+      ${ms.keyFiles.map((f) => `<span class="inline-flex items-center rounded-full bg-slate-900 border border-slate-700 px-2 py-0.5 text-xs font-mono text-slate-300">${escapeHtml(f)}</span>`).join("")}
     </div>`;
   }
 
   if (ms.verification) {
-    html += `<div class="mt-1 text-xs">
-      <span class="font-medium text-slate-400">Verification:</span>
-      <code class="font-mono bg-slate-900 px-1.5 py-0.5 rounded text-slate-300 ml-1">${escapeHtml(ms.verification)}</code>
-    </div>`;
+    html += `<pre class="rounded-md bg-slate-900 border border-slate-700 px-3 py-2 mb-3 text-xs font-mono text-emerald-400 overflow-x-auto"><code>${escapeHtml(ms.verification)}</code></pre>`;
   }
 
   if (ms.decisions && ms.decisions.length > 0) {
     const decisionsHtml = ms.decisions
       .map((d) => `<li class="text-slate-300">${escapeHtml(d)}</li>`)
       .join("");
-    html += `<div class="mt-2">
-      <span class="text-xs font-medium text-slate-400">Decisions:</span>
-      <ul class="mt-1 space-y-1 list-disc list-inside text-xs">${decisionsHtml}</ul>
-    </div>`;
+    html += `<details class="mt-2">
+      <summary class="text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300">Decisions (${ms.decisions.length})</summary>
+      <ul class="mt-1.5 space-y-1 list-disc list-inside text-xs pl-1">${decisionsHtml}</ul>
+    </details>`;
   }
 
   html += `</div>`;
+  return html;
+}
+
+/** Render details text, converting numbered steps (1. ...) into an ordered list. */
+function renderDetails(text: string): string {
+  const lines = text.split("\n");
+  const numberedPattern = /^\d+\.\s+/;
+  const hasNumberedSteps = lines.some((l) => numberedPattern.test(l.trim()));
+
+  if (!hasNumberedSteps) {
+    return `<p class="whitespace-pre-wrap">${escapeHtml(text)}</p>`;
+  }
+
+  let html = "";
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (numberedPattern.test(trimmed)) {
+      if (!inList) {
+        html += `<ol class="list-decimal list-inside space-y-1">`;
+        inList = true;
+      }
+      html += `<li class="text-slate-400">${escapeHtml(trimmed.replace(numberedPattern, ""))}</li>`;
+    } else {
+      if (inList) {
+        html += `</ol>`;
+        inList = false;
+      }
+      if (trimmed) {
+        html += `<p class="whitespace-pre-wrap">${escapeHtml(trimmed)}</p>`;
+      }
+    }
+  }
+  if (inList) {
+    html += `</ol>`;
+  }
+
   return html;
 }
 

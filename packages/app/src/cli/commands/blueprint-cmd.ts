@@ -90,7 +90,7 @@ export const blueprintCommand = new Command("blueprint")
         console.log(`  Total milestones: ${totalMilestones}`);
         console.log(`  Total cost: $${budget.spentUsd.toFixed(4)}`);
         console.log(
-          "\n  View full details in the dashboard: prism serve\n",
+          "\n  Detail milestones per-phase in the dashboard: prism serve\n",
         );
       } catch (err) {
         logger.error(

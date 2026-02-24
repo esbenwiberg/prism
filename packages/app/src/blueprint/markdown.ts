@@ -94,32 +94,45 @@ export function renderPhaseMarkdown(
     lines.push("");
   }
 
-  for (let i = 0; i < phase.milestones.length; i++) {
-    const ms = phase.milestones[i];
+  // Check if milestones have been detailed (any has intent, details, or keyFiles)
+  const hasDetails = phase.milestones.some(
+    (ms) => ms.intent || ms.details || ms.keyFiles.length > 0 || ms.verification,
+  );
 
-    lines.push(`## Milestone ${i + 1}: ${ms.title}`);
-
-    if (ms.intent) {
-      lines.push(ms.intent);
-      lines.push("");
+  if (!hasDetails) {
+    // Compact rendering — just a numbered list of titles
+    for (let i = 0; i < phase.milestones.length; i++) {
+      lines.push(`${i + 1}. ${phase.milestones[i].title}`);
     }
+    lines.push("");
+  } else {
+    for (let i = 0; i < phase.milestones.length; i++) {
+      const ms = phase.milestones[i];
 
-    if (ms.details) {
-      lines.push(ms.details);
-      lines.push("");
-    }
+      lines.push(`## Milestone ${i + 1}: ${ms.title}`);
 
-    if (ms.keyFiles.length > 0) {
-      lines.push(`**Key files**: ${ms.keyFiles.join(", ")}`);
-      lines.push("");
-    }
+      if (ms.intent) {
+        lines.push(ms.intent);
+        lines.push("");
+      }
 
-    if (ms.verification) {
-      lines.push("**Verification**:");
-      lines.push("```bash");
-      lines.push(ms.verification);
-      lines.push("```");
-      lines.push("");
+      if (ms.details) {
+        lines.push(ms.details);
+        lines.push("");
+      }
+
+      if (ms.keyFiles.length > 0) {
+        lines.push(`**Key files**: ${ms.keyFiles.join(", ")}`);
+        lines.push("");
+      }
+
+      if (ms.verification) {
+        lines.push("**Verification**:");
+        lines.push("```bash");
+        lines.push(ms.verification);
+        lines.push("```");
+        lines.push("");
+      }
     }
   }
 

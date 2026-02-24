@@ -115,6 +115,7 @@ export {
   getBlueprintMilestone,
   updateBlueprintMilestoneDetails,
   updateBlueprintMilestoneField,
+  updateBlueprintPhaseCostUsd,
   type BlueprintPlanRow,
   type BlueprintPhaseRow,
   type BlueprintMilestoneRow,

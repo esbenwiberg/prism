@@ -285,6 +285,18 @@ export async function updateBlueprintMilestoneDetails(
     .where(eq(blueprintMilestones.id, milestoneId));
 }
 
+/** Update the cost USD for a phase (used when detailing a phase after initial generation). */
+export async function updateBlueprintPhaseCostUsd(
+  phaseId: number,
+  costUsd: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(blueprintPhases)
+    .set({ costUsd })
+    .where(eq(blueprintPhases.id, phaseId));
+}
+
 /** Apply a single proposed edit to a milestone field. */
 export async function updateBlueprintMilestoneField(
   milestoneId: number,
