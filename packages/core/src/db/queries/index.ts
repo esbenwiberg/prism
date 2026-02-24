@@ -141,6 +141,7 @@ export {
   failJob,
   getJobsByProjectId,
   getPendingJobCount,
+  resetStaleJobs,
   type JobRow,
   type JobOptions,
 } from "./jobs.js";

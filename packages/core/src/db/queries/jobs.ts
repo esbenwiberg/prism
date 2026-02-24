@@ -9,7 +9,7 @@
 
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
-import { jobs } from "../schema.js";
+import { jobs, indexRuns, projects } from "../schema.js";
 import type { JobStatus, JobType } from "../../domain/types.js";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +133,51 @@ export async function getPendingJobCount(): Promise<number> {
   `);
   const rows = result.rows as Array<Record<string, unknown>>;
   return Number(rows[0]?.count ?? 0);
+}
+
+/**
+ * Reset all jobs stuck in "running" state (e.g. after a process crash).
+ *
+ * Marks them as "failed", resets the corresponding project `indexStatus`
+ * back to its previous completed/partial state, and fails any in-progress
+ * index runs.  Called once at worker startup.
+ *
+ * Returns the number of jobs that were reset.
+ */
+export async function resetStaleJobs(): Promise<number> {
+  const db = getDb();
+
+  // 1. Fail all running index runs
+  await db
+    .update(indexRuns)
+    .set({
+      status: "failed",
+      error: "Interrupted by process restart",
+      completedAt: new Date(),
+    })
+    .where(eq(indexRuns.status, "running"));
+
+  // 2. Fail all running jobs and collect their project IDs
+  const staleJobs = await db
+    .update(jobs)
+    .set({
+      status: "failed" satisfies JobStatus,
+      error: "Interrupted by process restart",
+      completedAt: new Date(),
+    })
+    .where(eq(jobs.status, "running"))
+    .returning({ id: jobs.id, projectId: jobs.projectId });
+
+  // 3. Reset project indexStatus for affected projects
+  const projectIds = [...new Set(staleJobs.map((j) => j.projectId))];
+  for (const pid of projectIds) {
+    await db
+      .update(projects)
+      .set({ indexStatus: "failed", updatedAt: new Date() })
+      .where(eq(projects.id, pid));
+  }
+
+  return staleJobs.length;
 }
 
 // ---------------------------------------------------------------------------

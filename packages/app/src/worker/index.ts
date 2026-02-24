@@ -13,6 +13,7 @@ import {
   claimNextJob,
   completeJob,
   failJob,
+  resetStaleJobs,
 } from "@prism/core";
 
 import { executeJob } from "./executor.js";
@@ -61,6 +62,12 @@ export async function startWorker(): Promise<void> {
 
   process.on("SIGTERM", () => onSignal("SIGTERM"));
   process.on("SIGINT", () => onSignal("SIGINT"));
+
+  // Recover any jobs left in "running" state from a previous crash
+  const staleCount = await resetStaleJobs();
+  if (staleCount > 0) {
+    logger.info({ staleCount }, "Reset stale running jobs from previous crash");
+  }
 
   logger.info("Worker started — polling for jobs");
 
