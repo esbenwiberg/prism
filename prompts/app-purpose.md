@@ -58,13 +58,13 @@ Bullet list of rules that must never be violated (e.g. "payments are idempotent"
 
 Bullet list of inferred quality attributes (performance, availability, security, compliance, etc.).
 
-## Preserve in Redesign
+## Key Contracts
 
-Bullet list of behaviours, contracts, or interfaces that a redesign must not break.
+Bullet list of public interfaces, APIs, data formats, or integration points that external consumers depend on.
 
-## Improve in Redesign
+## Known Weaknesses
 
-Bullet list of known weaknesses, tech debt, or gaps that a redesign should address.
+Bullet list of observable tech debt, gaps, or fragile areas inferred from the codebase signals.
 
 ---
 
