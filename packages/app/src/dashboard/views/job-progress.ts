@@ -72,7 +72,7 @@ function formatRelativeTime(date: Date | string): { text: string; ageSeconds: nu
 }
 
 /** Render a single layer row. */
-function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean, unit = "files"): string {
+function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean, unit = "files", projectId?: number): string {
   const label = LAYER_LABELS[layer] ?? layer;
 
   if (!run) {
@@ -172,7 +172,13 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
           return `<span class="ml-auto text-xs ${color} font-medium">active ${escapeHtml(text)}</span>`;
         }
         return `<span class="ml-auto text-xs text-blue-400 font-medium animate-pulse">running</span>`;
-      })() : ""}
+      })() : !isActive && projectId != null && layer !== "blueprint" && (status === "completed" || status === "failed" || status === "cancelled")
+        ? `<button hx-post="/projects/${projectId}/run-layer"
+                   hx-vals='${escapeHtml(JSON.stringify({ layer }))}'
+                   hx-target="#job-progress"
+                   hx-swap="outerHTML"
+                   class="ml-auto text-xs rounded border border-slate-600 px-2 py-0.5 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors">Re-run</button>`
+        : ""}
     </div>${progressBar}
   </div>`;
 }
@@ -254,7 +260,7 @@ export function jobProgressFragment(data: JobProgressData): string {
 
   const layerOrder = INDEX_LAYER_ORDER;
   const layers = layerOrder.map((layer) =>
-    layerRow(layer, byLayer.get(layer), isActive, LAYER_UNIT[layer] ?? "files"),
+    layerRow(layer, byLayer.get(layer), isActive, LAYER_UNIT[layer] ?? "files", projectId),
   ).join("");
 
   return `<div id="job-progress" class="mb-6"${pollingAttr}>
