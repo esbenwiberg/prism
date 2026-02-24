@@ -10,9 +10,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-
 import {
   logger,
+  createAnthropicClient,
   type BudgetTracker,
   type BlueprintConfig,
   type SummaryRow,
@@ -219,7 +219,7 @@ export async function generateHierarchicalBlueprint(
   // Build project intent
   const projectIntent = buildProjectIntent(projectName, goal);
 
-  const client = new Anthropic();
+  const client = createAnthropicClient();
 
   // -----------------------------------------------------------------------
   // Pass 1 — Master plan
@@ -362,7 +362,7 @@ export async function expandPhaseMilestones(
     .replace(/\{\{milestones\}\}/g, milestonesText);
 
   try {
-    const client = new Anthropic();
+    const client = createAnthropicClient();
     const response = await client.messages.create({
       model,
       max_tokens: 8000,
@@ -467,7 +467,7 @@ export async function detailPhaseById(
   const previousPhases = phaseOutlines.slice(0, phaseIndex);
   const nextPhases = phaseOutlines.slice(phaseIndex + 1);
 
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const budget = createBudgetTrackerForDetail();
   const config: BlueprintConfig = { enabled: true, model, budgetUsd: 5 };
 

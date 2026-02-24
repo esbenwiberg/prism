@@ -6,9 +6,8 @@
  */
 
 import { createHash } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
-
 import { logger } from "../../logger.js";
+import { createAnthropicClient } from "../../llm/client.js";
 import type { BudgetTracker } from "../types.js";
 import type { AnalysisConfig } from "../../domain/types.js";
 import type { SummaryRow } from "../../db/queries/summaries.js";
@@ -69,7 +68,7 @@ export async function runGapAnalysis(
     return [];
   }
 
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const template = loadTemplate("gap-analysis.md");
 
   const moduleSummariesText = moduleSummaries

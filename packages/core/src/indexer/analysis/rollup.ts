@@ -9,9 +9,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import Anthropic from "@anthropic-ai/sdk";
-
 import { logger } from "../../logger.js";
+import { createAnthropicClient } from "../../llm/client.js";
 import type { BudgetTracker } from "../types.js";
 import type { AnalysisConfig } from "../../domain/types.js";
 import type { SummaryRow } from "../../db/queries/summaries.js";
@@ -97,7 +96,7 @@ export async function rollupFileSummaries(
   budget: BudgetTracker,
   onProgress?: (filesProcessed: number) => void,
 ): Promise<SummaryRow[]> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const template = loadTemplate("summarize-file.md");
 
   // Group symbol summaries by file path
@@ -199,7 +198,7 @@ export async function rollupModuleSummaries(
   config: AnalysisConfig,
   budget: BudgetTracker,
 ): Promise<SummaryRow[]> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const template = loadTemplate("summarize-module.md");
 
   // Group file summaries by directory (module)
@@ -299,7 +298,7 @@ export async function rollupSystemSummary(
     return null;
   }
 
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const template = loadTemplate("summarize-system.md");
 
   const moduleSummariesText = moduleSummaries

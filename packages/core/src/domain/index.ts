@@ -5,4 +5,4 @@
  */
 
 export * from "./types.js";
-export { initConfig, getConfig, resetConfig, saveConfig } from "./config.js";
+export { initConfig, getConfig, resetConfig, saveConfig, getApiKey } from "./config.js";

@@ -13,8 +13,8 @@
  */
 
 import { Router } from "express";
-import Anthropic from "@anthropic-ai/sdk";
 import {
+  createAnthropicClient,
   getProject,
   getBlueprintPlansByProjectId,
   getBlueprintPlan,
@@ -359,7 +359,7 @@ blueprintsRouter.post("/blueprints/phases/:phaseId/chat", async (req, res) => {
   messages.push({ role: "user", content: userMessage });
 
   try {
-    const client = new Anthropic();
+    const client = createAnthropicClient();
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2000,

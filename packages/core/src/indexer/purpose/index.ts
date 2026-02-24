@@ -7,9 +7,8 @@
  */
 
 import { createHash } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
-
 import { logger } from "../../logger.js";
+import { createAnthropicClient } from "../../llm/client.js";
 import type { BudgetTracker } from "../types.js";
 import type { PurposeConfig } from "../../domain/types.js";
 import { bulkInsertSummaries, getSummaryByTargetId } from "../../db/queries/summaries.js";
@@ -98,7 +97,7 @@ export async function runPurposeAnalysis(
     .replace(/\{\{exportedTypes\}\}/g, exportedTypesText)
     .replace(/\{\{testDescriptions\}\}/g, testDescriptionsText);
 
-  const client = new Anthropic();
+  const client = createAnthropicClient();
 
   try {
     const response = await client.messages.create({

@@ -8,6 +8,7 @@
 
 import { logger } from "../../logger.js";
 import type { SemanticConfig } from "../../domain/types.js";
+import { getApiKey } from "../../domain/config.js";
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -49,9 +50,9 @@ export class VoyageProvider implements EmbeddingProvider {
   private readonly apiKey: string;
   private readonly baseUrl = "https://api.voyageai.com/v1";
 
-  constructor(model: string) {
+  constructor(model: string, apiKey?: string) {
     this.model = model;
-    const key = process.env.VOYAGE_API_KEY;
+    const key = apiKey || process.env.VOYAGE_API_KEY;
     if (!key) {
       throw new Error("VOYAGE_API_KEY environment variable is required for Voyage embeddings");
     }
@@ -117,9 +118,9 @@ export class OpenAIProvider implements EmbeddingProvider {
   private readonly apiKey: string;
   private readonly baseUrl = "https://api.openai.com/v1";
 
-  constructor(model: string) {
+  constructor(model: string, apiKey?: string) {
     this.model = model;
-    const key = process.env.OPENAI_API_KEY;
+    const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) {
       throw new Error("OPENAI_API_KEY environment variable is required for OpenAI embeddings");
     }
@@ -185,13 +186,13 @@ export class AzureOpenAIProvider implements EmbeddingProvider {
   private readonly apiKey: string;
   private readonly endpoint: string;
 
-  constructor(model: string) {
+  constructor(model: string, opts?: { apiKey?: string; endpoint?: string }) {
     this.model = model;
-    const key = process.env.AZURE_OPENAI_API_KEY;
+    const key = opts?.apiKey || process.env.AZURE_OPENAI_API_KEY;
     if (!key) {
       throw new Error("AZURE_OPENAI_API_KEY environment variable is required for Azure OpenAI embeddings");
     }
-    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const endpoint = opts?.endpoint || process.env.AZURE_OPENAI_ENDPOINT;
     if (!endpoint) {
       throw new Error("AZURE_OPENAI_ENDPOINT environment variable is required for Azure OpenAI embeddings");
     }
@@ -253,13 +254,22 @@ export function createEmbedder(config: SemanticConfig): EmbeddingProvider {
 
   switch (provider) {
     case "voyage":
-      return new VoyageProvider(config.embeddingModel);
+      return new VoyageProvider(
+        config.embeddingModel,
+        getApiKey("voyageApiKey", "VOYAGE_API_KEY"),
+      );
 
     case "openai":
-      return new OpenAIProvider(config.embeddingModel);
+      return new OpenAIProvider(
+        config.embeddingModel,
+        getApiKey("openaiApiKey", "OPENAI_API_KEY"),
+      );
 
     case "azure-openai":
-      return new AzureOpenAIProvider(config.embeddingModel);
+      return new AzureOpenAIProvider(config.embeddingModel, {
+        apiKey: getApiKey("azureOpenaiApiKey", "AZURE_OPENAI_API_KEY"),
+        endpoint: getApiKey("azureOpenaiEndpoint", "AZURE_OPENAI_ENDPOINT"),
+      });
 
     default:
       throw new Error(

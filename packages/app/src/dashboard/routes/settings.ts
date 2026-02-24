@@ -7,11 +7,12 @@ import {
   settingsPanel,
   analysisTabPartial,
   indexerTabPartial,
+  apiKeysTabPartial,
 } from "../views/settings.js";
 
 const router = Router();
 
-const VALID_TABS = new Set<SettingsTab>(["analysis", "indexer"]);
+const VALID_TABS = new Set<SettingsTab>(["analysis", "indexer", "apikeys"]);
 
 function isValidTab(value: unknown): value is SettingsTab {
   return typeof value === "string" && VALID_TABS.has(value as SettingsTab);
@@ -36,12 +37,17 @@ router.get("/settings/tab", async (req: Request, res: Response, next: NextFuncti
   try {
     const tab = req.query.tab;
     if (!isValidTab(tab)) {
-      res.status(400).send("Invalid tab. Must be one of: analysis, indexer");
+      res.status(400).send("Invalid tab. Must be one of: analysis, indexer, apikeys");
       return;
     }
 
     const config = getConfig();
-    const tabContent = tab === "analysis" ? analysisTabPartial(config) : indexerTabPartial(config);
+    const tabContent =
+      tab === "apikeys"
+        ? apiKeysTabPartial(config)
+        : tab === "indexer"
+          ? indexerTabPartial(config)
+          : analysisTabPartial(config);
     res.send(settingsPanel(tab, tabContent));
   } catch (err) {
     next(err);
@@ -165,6 +171,44 @@ router.post("/settings/indexer", async (req: Request, res: Response, next: NextF
       JSON.stringify({ showToast: { message: "Indexer settings saved", type: "success" } }),
     );
     res.send(indexerTabPartial(updatedConfig));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /settings/apikeys ─ Save API key settings ───────────────────────────
+
+const MASK_PREFIX = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+
+router.post("/settings/apikeys", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as Record<string, string>;
+    const current = getConfig().apiKeys;
+
+    // For each key, if the submitted value matches the masked form, keep the existing value.
+    // If empty, clear it. Otherwise, use the new value.
+    function resolveKey(field: string, existing: string): string {
+      const submitted = (body[field] ?? "").trim();
+      if (!submitted) return "";
+      if (submitted.startsWith(MASK_PREFIX)) return existing;
+      return submitted;
+    }
+
+    const apiKeys = {
+      anthropicApiKey: resolveKey("anthropicApiKey", current.anthropicApiKey),
+      azureOpenaiEndpoint: resolveKey("azureOpenaiEndpoint", current.azureOpenaiEndpoint),
+      azureOpenaiApiKey: resolveKey("azureOpenaiApiKey", current.azureOpenaiApiKey),
+      voyageApiKey: resolveKey("voyageApiKey", current.voyageApiKey),
+      openaiApiKey: resolveKey("openaiApiKey", current.openaiApiKey),
+    };
+
+    const updatedConfig = await saveConfig({ apiKeys });
+
+    res.setHeader(
+      "HX-Trigger",
+      JSON.stringify({ showToast: { message: "API keys saved", type: "success" } }),
+    );
+    res.send(apiKeysTabPartial(updatedConfig));
   } catch (err) {
     next(err);
   }

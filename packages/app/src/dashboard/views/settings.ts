@@ -4,7 +4,7 @@ import { layout } from "./layout.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type SettingsTab = "analysis" | "indexer";
+export type SettingsTab = "analysis" | "indexer" | "apikeys";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,7 @@ function settingsTabs(active: SettingsTab): string {
   return `<div class="flex gap-1 border-b border-slate-700">
   ${tabButton("Analysis", "analysis", active)}
   ${tabButton("Indexer", "indexer", active)}
+  ${tabButton("API Keys", "apikeys", active)}
 </div>`;
 }
 
@@ -157,6 +158,74 @@ export function indexerTabPartial(config: PrismConfig): string {
 </form>`;
 }
 
+// ── API Keys Tab ─────────────────────────────────────────────────────────────
+
+function maskKey(value: string): string {
+  if (!value) return "";
+  const last4 = value.slice(-4);
+  return `\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022${last4}`;
+}
+
+export function apiKeysTabPartial(config: PrismConfig): string {
+  const keys = config.apiKeys;
+
+  return `<form hx-post="/settings/apikeys" hx-target="#settings-content" hx-swap="innerHTML">
+  <div class="space-y-6">
+    <p class="text-sm text-slate-400">Configure API keys for AI providers. Keys are stored in the database and take precedence over environment variables.</p>
+
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ${card("Anthropic", `
+        <div class="space-y-3">
+          ${input("anthropicApiKey", "API Key", {
+            type: "password",
+            value: maskKey(keys.anthropicApiKey),
+            placeholder: "Set via ANTHROPIC_API_KEY env var",
+          })}
+        </div>
+      `)}
+
+      ${card("Azure OpenAI", `
+        <div class="space-y-3">
+          ${input("azureOpenaiEndpoint", "Endpoint", {
+            value: keys.azureOpenaiEndpoint ? maskKey(keys.azureOpenaiEndpoint) : "",
+            placeholder: "Set via AZURE_OPENAI_ENDPOINT env var",
+          })}
+          ${input("azureOpenaiApiKey", "API Key", {
+            type: "password",
+            value: maskKey(keys.azureOpenaiApiKey),
+            placeholder: "Set via AZURE_OPENAI_API_KEY env var",
+          })}
+        </div>
+      `)}
+
+      ${card("Voyage", `
+        <div class="space-y-3">
+          ${input("voyageApiKey", "API Key", {
+            type: "password",
+            value: maskKey(keys.voyageApiKey),
+            placeholder: "Set via VOYAGE_API_KEY env var",
+          })}
+        </div>
+      `)}
+
+      ${card("OpenAI", `
+        <div class="space-y-3">
+          ${input("openaiApiKey", "API Key", {
+            type: "password",
+            value: maskKey(keys.openaiApiKey),
+            placeholder: "Set via OPENAI_API_KEY env var",
+          })}
+        </div>
+      `)}
+    </div>
+
+    <div class="flex justify-end">
+      ${button("Save API Keys", { variant: "primary", attrs: 'type="submit"' })}
+    </div>
+  </div>
+</form>`;
+}
+
 // ── Full Page ────────────────────────────────────────────────────────────────
 
 export function settingsPage(
@@ -165,7 +234,11 @@ export function settingsPage(
   activeTab: SettingsTab = "analysis",
 ): string {
   const tabContent =
-    activeTab === "analysis" ? analysisTabPartial(config) : indexerTabPartial(config);
+    activeTab === "apikeys"
+      ? apiKeysTabPartial(config)
+      : activeTab === "indexer"
+        ? indexerTabPartial(config)
+        : analysisTabPartial(config);
 
   const content = `<div class="space-y-8">
   <div>

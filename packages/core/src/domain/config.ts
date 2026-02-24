@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import { logger } from "../logger.js";
-import type { PrismConfig } from "./types.js";
+import type { ApiKeysConfig, PrismConfig } from "./types.js";
 import { getDbSettings, saveDbSettings } from "../db/queries/settings.js";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +66,13 @@ const DEFAULT_CONFIG: PrismConfig = {
   },
   dashboard: {
     port: 3100,
+  },
+  apiKeys: {
+    anthropicApiKey: "",
+    azureOpenaiApiKey: "",
+    azureOpenaiEndpoint: "",
+    voyageApiKey: "",
+    openaiApiKey: "",
   },
 };
 
@@ -305,6 +312,22 @@ export function getConfig(): PrismConfig {
  */
 export function resetConfig(): void {
   _config = undefined;
+}
+
+/**
+ * Resolve an API key: prefer value from config, fall back to env var.
+ *
+ * @param configKey — key name on `ApiKeysConfig`
+ * @param envVar    — environment variable name to fall back to
+ */
+export function getApiKey(configKey: keyof ApiKeysConfig, envVar: string): string | undefined {
+  try {
+    const cfg = getConfig();
+    if (cfg.apiKeys[configKey]) return cfg.apiKeys[configKey];
+  } catch {
+    // Config not yet initialised — fall through to env var
+  }
+  return process.env[envVar] || undefined;
 }
 
 /**

@@ -9,9 +9,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import Anthropic from "@anthropic-ai/sdk";
-
 import { logger } from "../../logger.js";
+import { createAnthropicClient } from "../../llm/client.js";
 import type { BudgetTracker, ExtractedSymbol } from "../types.js";
 import type { SemanticConfig } from "../../domain/types.js";
 import { extractSymbolSource, buildFileContext, estimateTokens } from "./chunker.js";
@@ -199,7 +198,7 @@ export async function summariseBatch(
   budget: BudgetTracker,
   existingHashes: Set<string> = new Set(),
 ): Promise<SummaryResult[]> {
-  const client = new Anthropic();
+  const client = createAnthropicClient();
   const results: SummaryResult[] = [];
 
   for (const input of inputs) {

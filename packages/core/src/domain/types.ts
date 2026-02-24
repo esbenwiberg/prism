@@ -116,6 +116,14 @@ export interface DashboardConfig {
   port: number;
 }
 
+export interface ApiKeysConfig {
+  anthropicApiKey: string;
+  azureOpenaiApiKey: string;
+  azureOpenaiEndpoint: string;
+  voyageApiKey: string;
+  openaiApiKey: string;
+}
+
 /** Top-level Prism configuration loaded from `prism.config.yaml`. */
 export interface PrismConfig {
   structural: StructuralConfig;
@@ -125,6 +133,7 @@ export interface PrismConfig {
   blueprint: BlueprintConfig;
   indexer: IndexerConfig;
   dashboard: DashboardConfig;
+  apiKeys: ApiKeysConfig;
 }
 
 // ---------------------------------------------------------------------------
