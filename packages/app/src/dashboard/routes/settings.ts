@@ -72,6 +72,25 @@ router.post("/settings/analysis", async (req: Request, res: Response, next: Next
       return;
     }
 
+    // Validate embedding fields
+    const VALID_EMBEDDING_PROVIDERS = ["voyage", "openai", "azure-openai"];
+    const embeddingProvider = body.semantic_embeddingProvider?.trim();
+    const embeddingModel = body.semantic_embeddingModel?.trim();
+    const embeddingDimensions = parseInt(body.semantic_embeddingDimensions ?? "", 10);
+
+    if (!embeddingProvider || !VALID_EMBEDDING_PROVIDERS.includes(embeddingProvider)) {
+      res.status(400).send("Embedding provider must be one of: voyage, openai, azure-openai");
+      return;
+    }
+    if (!embeddingModel) {
+      res.status(400).send("Embedding model is required");
+      return;
+    }
+    if (isNaN(embeddingDimensions) || embeddingDimensions < 1) {
+      res.status(400).send("Embedding dimensions must be a positive integer");
+      return;
+    }
+
     // Validate budget fields
     const semanticBudget = parseFloat(body.semantic_budgetUsd ?? "");
     const analysisBudget = parseFloat(body.analysis_budgetUsd ?? "");
@@ -91,7 +110,7 @@ router.post("/settings/analysis", async (req: Request, res: Response, next: Next
     }
 
     const updatedConfig = await saveConfig({
-      semantic: { model: semanticModel, budgetUsd: semanticBudget },
+      semantic: { model: semanticModel, budgetUsd: semanticBudget, embeddingProvider, embeddingModel, embeddingDimensions },
       analysis: { model: analysisModel, budgetUsd: analysisBudget },
       blueprint: { model: blueprintModel, budgetUsd: blueprintBudget },
     });

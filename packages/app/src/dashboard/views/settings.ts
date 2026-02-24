@@ -39,9 +39,15 @@ export function settingsPanel(active: SettingsTab, tabContent: string): string {
 
 // ── Analysis Tab ─────────────────────────────────────────────────────────────
 
+const EMBEDDING_PROVIDER_OPTIONS = [
+  { value: "voyage", label: "Voyage" },
+  { value: "openai", label: "OpenAI" },
+  { value: "azure-openai", label: "Azure OpenAI" },
+];
+
 const MODEL_OPTIONS = [
   { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast)" },
-  { value: "claude-sonnet-4-6-20250514", label: "Sonnet 4.6 (balanced)" },
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
   { value: "claude-opus-4-6", label: "Opus 4.6 (powerful)" },
 ];
 
@@ -58,6 +64,16 @@ export function analysisTabPartial(config: PrismConfig): string {
             type: "number",
             value: String(config.semantic.budgetUsd),
             placeholder: "10.00",
+          })}
+          ${select("semantic_embeddingProvider", "Embedding Provider", EMBEDDING_PROVIDER_OPTIONS, config.semantic.embeddingProvider)}
+          ${input("semantic_embeddingModel", "Embedding Model", {
+            value: config.semantic.embeddingModel,
+            placeholder: "voyage-code-3",
+          })}
+          ${input("semantic_embeddingDimensions", "Embedding Dimensions", {
+            type: "number",
+            value: String(config.semantic.embeddingDimensions),
+            placeholder: "3072",
           })}
         </div>
       `)}
