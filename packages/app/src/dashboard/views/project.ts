@@ -90,7 +90,7 @@ export function projectPage(data: ProjectPageData): string {
   <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>
   <p class="text-slate-300"><span class="font-medium text-slate-400">Status:</span> ${statusBadge(project.indexStatus)}</p>
   <p class="text-slate-300"><span class="font-medium text-slate-400">Last indexed commit:</span> <span class="font-mono text-xs">${escapeHtml(project.lastIndexedCommit ?? "\u2014")}</span></p>
-  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toLocaleString())}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> <time data-local datetime="${escapeHtml(project.updatedAt.toISOString())}">${escapeHtml(project.updatedAt.toISOString())}</time></p>
 </div>`;
 
 
@@ -134,7 +134,7 @@ export function projectFragment(data: ProjectPageData): string {
   <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>
   <p class="text-slate-300"><span class="font-medium text-slate-400">Status:</span> ${statusBadge(project.indexStatus)}</p>
   <p class="text-slate-300"><span class="font-medium text-slate-400">Last indexed commit:</span> <span class="font-mono text-xs">${escapeHtml(project.lastIndexedCommit ?? "\u2014")}</span></p>
-  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> ${escapeHtml(project.updatedAt.toLocaleString())}</p>
+  <p class="text-slate-300"><span class="font-medium text-slate-400">Updated:</span> <time data-local datetime="${escapeHtml(project.updatedAt.toISOString())}">${escapeHtml(project.updatedAt.toISOString())}</time></p>
 </div>`;
 
   return (

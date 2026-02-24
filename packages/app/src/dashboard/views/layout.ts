@@ -193,6 +193,14 @@ export function layout(options: LayoutOptions): string {
   <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
   </div>
 
+  <!-- Local time: convert <time data-local datetime="..."> to browser timezone -->
+  <script>
+    document.querySelectorAll('time[data-local]').forEach(function(el) {
+      var d = new Date(el.getAttribute('datetime'));
+      if (!isNaN(d)) el.textContent = d.toLocaleString();
+    });
+  </script>
+
 </body>
 </html>`;
 }
