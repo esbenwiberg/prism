@@ -166,9 +166,6 @@ async function executeIndexJob(
   } finally {
     // Always cleanup the clone directory
     await cleanupClone(destDir);
-
-    // Clear the project path (clone dir is gone)
-    await updateProject(projectId, { path: "" });
   }
 }
 
