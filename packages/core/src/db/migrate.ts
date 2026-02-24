@@ -40,9 +40,12 @@ export async function runMigrations(
 ): Promise<void> {
   const { migrationsFolder = "drizzle" } = options;
 
+  const migrationsSchema = "drizzle";
+
   const config: MigrationConfig = {
     migrationsFolder,
     migrationsTable: "prism_migrations",
+    migrationsSchema,
   };
 
   const db = getDb();
@@ -54,7 +57,7 @@ export async function runMigrations(
   let appliedHashes = new Set<string>();
   try {
     const result = await db.execute(
-      sql`SELECT hash FROM prism_migrations`,
+      sql`SELECT hash FROM drizzle.prism_migrations`,
     );
     appliedHashes = new Set(result.rows.map((r) => String((r as Record<string, unknown>).hash)));
   } catch {

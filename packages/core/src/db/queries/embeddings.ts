@@ -127,7 +127,7 @@ export async function similaritySearch(
   const results = await db.execute(sql`
     SELECT
       e.id AS embedding_id,
-      e.embedding <=> ${vectorLiteral}::vector AS distance,
+      e.embedding <=> ${vectorLiteral}::halfvec AS distance,
       s.content AS summary_content,
       s.target_id,
       s.level,
@@ -146,7 +146,7 @@ export async function similaritySearch(
       )
     LEFT JOIN prism_files f ON f.id = sym.file_id
     WHERE e.project_id = ${projectId}
-    ORDER BY e.embedding <=> ${vectorLiteral}::vector
+    ORDER BY e.embedding <=> ${vectorLiteral}::halfvec
     LIMIT ${limit}
   `);
 
@@ -189,14 +189,14 @@ export async function simpleSimilaritySearch(
   const results = await db.execute(sql`
     SELECT
       e.id AS embedding_id,
-      e.embedding <=> ${vectorLiteral}::vector AS distance,
+      e.embedding <=> ${vectorLiteral}::halfvec AS distance,
       s.content AS summary_content,
       s.target_id,
       s.level
     FROM prism_embeddings e
     JOIN prism_summaries s ON s.id = e.summary_id
     WHERE e.project_id = ${projectId}
-    ORDER BY e.embedding <=> ${vectorLiteral}::vector
+    ORDER BY e.embedding <=> ${vectorLiteral}::halfvec
     LIMIT ${limit}
   `);
 
