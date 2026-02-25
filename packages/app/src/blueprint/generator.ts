@@ -695,12 +695,19 @@ export async function generatePhaseDetail(
   try {
     const response = await client.messages.create({
       model: config.model,
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: "user", content: prompt }],
     });
 
     const textBlock = response.content.find((block) => block.type === "text");
     const rawText = textBlock && "text" in textBlock ? textBlock.text : "";
+
+    if (response.stop_reason === "max_tokens") {
+      logger.warn(
+        { phase: phaseOutline.title },
+        "Phase detail response truncated at max_tokens — JSON will be unparseable",
+      );
+    }
 
     const costUsd =
       response.usage.input_tokens * SONNET_INPUT_COST_PER_TOKEN +
