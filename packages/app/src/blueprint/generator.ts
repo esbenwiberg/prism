@@ -803,7 +803,7 @@ export function parsePhaseDetail(rawText: string): BlueprintPhase | null {
       milestones,
     };
   } catch {
-    logger.warn("Failed to parse phase detail as JSON");
+    logger.warn({ rawText: rawText.slice(0, 500) }, "Failed to parse phase detail as JSON");
     return null;
   }
 }
@@ -832,8 +832,24 @@ function buildProjectIntent(projectName: string, goal?: string): string {
 
 function stripCodeFences(text: string): string {
   let t = text.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  // Strip leading code fence (with optional language tag)
+  t = t.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  t = t.trim();
+  // If there's still no leading `{`, try to extract the JSON object
+  // by finding the first `{` and last `}` — handles cases where the LLM
+  // adds commentary before or after the JSON despite instructions not to.
+  if (!t.startsWith("{") && !t.startsWith("[")) {
+    const start = t.indexOf("{");
+    const startArr = t.indexOf("[");
+    const firstBrace = start === -1 ? startArr : startArr === -1 ? start : Math.min(start, startArr);
+    if (firstBrace !== -1) {
+      const openChar = t[firstBrace];
+      const closeChar = openChar === "{" ? "}" : "]";
+      const end = t.lastIndexOf(closeChar);
+      if (end > firstBrace) {
+        t = t.slice(firstBrace, end + 1);
+      }
+    }
   }
   return t;
 }

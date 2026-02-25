@@ -45,9 +45,10 @@ You are an expert software architect detailing the milestones for a single phase
 
 ## Output
 
-Return a single JSON object (no surrounding text, no code fences):
+Return ONLY a single raw JSON object. No markdown fences, no surrounding text, no commentary.
 
-```json
+The JSON must have this shape:
+
 {
   "title": "Phase title",
   "intent": "Phase intent/purpose",
@@ -65,6 +66,3 @@ Return a single JSON object (no surrounding text, no code fences):
     }
   ]
 }
-```
-
-Return ONLY the JSON object. No markdown fences, no commentary.
