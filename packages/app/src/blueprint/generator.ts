@@ -803,7 +803,10 @@ export function parsePhaseDetail(rawText: string): BlueprintPhase | null {
       milestones,
     };
   } catch {
-    logger.warn({ rawText: rawText.slice(0, 500) }, "Failed to parse phase detail as JSON");
+    logger.warn(
+      { err: { message: `Raw response (first 500 chars): ${rawText.slice(0, 500)}` } },
+      "Failed to parse phase detail as JSON",
+    );
     return null;
   }
 }
@@ -830,26 +833,50 @@ function buildProjectIntent(projectName: string, goal?: string): string {
   return parts.join("\n");
 }
 
-function stripCodeFences(text: string): string {
-  let t = text.trim();
-  // Strip leading code fence (with optional language tag)
-  t = t.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
-  t = t.trim();
-  // If there's still no leading `{`, try to extract the JSON object
-  // by finding the first `{` and last `}` — handles cases where the LLM
-  // adds commentary before or after the JSON despite instructions not to.
-  if (!t.startsWith("{") && !t.startsWith("[")) {
-    const start = t.indexOf("{");
-    const startArr = t.indexOf("[");
-    const firstBrace = start === -1 ? startArr : startArr === -1 ? start : Math.min(start, startArr);
-    if (firstBrace !== -1) {
-      const openChar = t[firstBrace];
-      const closeChar = openChar === "{" ? "}" : "]";
-      const end = t.lastIndexOf(closeChar);
-      if (end > firstBrace) {
-        t = t.slice(firstBrace, end + 1);
+function extractJsonValue(text: string): string | null {
+  const openIdx = (() => {
+    const a = text.indexOf("{");
+    const b = text.indexOf("[");
+    if (a === -1) return b;
+    if (b === -1) return a;
+    return Math.min(a, b);
+  })();
+  if (openIdx === -1) return null;
+
+  const openChar = text[openIdx];
+  const closeChar = openChar === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = openIdx; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') inString = false;
+    } else {
+      if (ch === '"') { inString = true; continue; }
+      if (ch === openChar) depth++;
+      else if (ch === closeChar) {
+        depth--;
+        if (depth === 0) return text.slice(openIdx, i + 1);
       }
     }
+  }
+  return null;
+}
+
+function stripCodeFences(text: string): string {
+  let t = text.trim();
+  // Strip leading code fence (any language tag)
+  t = t.replace(/^```(?:\w+)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  t = t.trim();
+  // If still no leading `{`/`[`, use brace-depth tracking to extract
+  // the first complete JSON value — handles commentary before or after.
+  if (!t.startsWith("{") && !t.startsWith("[")) {
+    const extracted = extractJsonValue(t);
+    if (extracted) t = extracted;
   }
   return t;
 }
