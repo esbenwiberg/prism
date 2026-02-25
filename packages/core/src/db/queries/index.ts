@@ -145,8 +145,30 @@ export {
   getJobsByProjectId,
   getPendingJobCount,
   resetStaleJobs,
+  hasActiveJobForProject,
+  listRecentIndexJobs,
   type JobRow,
   type JobOptions,
+  type IndexJobWithProject,
 } from "./jobs.js";
 
 export { getDbSettings, saveDbSettings } from "./settings.js";
+
+export {
+  upsertReindexRequest,
+  listReindexRequests,
+  listReindexRequestsWithProjects,
+  deleteReindexRequest,
+  type ReindexRequestRow,
+  type ReindexRequestWithProject,
+} from "./reindex-requests.js";
+
+export {
+  createApiKey,
+  listApiKeys,
+  deleteApiKey,
+  verifyApiKey,
+  type ApiKeyRow,
+  type CreateApiKeyInput,
+  type CreateApiKeyResult,
+} from "./api-keys.js";

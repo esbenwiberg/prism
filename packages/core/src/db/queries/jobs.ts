@@ -7,7 +7,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { jobs, indexRuns, projects } from "../schema.js";
 import type { JobStatus, JobType } from "../../domain/types.js";
@@ -17,6 +17,10 @@ import type { JobStatus, JobType } from "../../domain/types.js";
 // ---------------------------------------------------------------------------
 
 export type JobRow = typeof jobs.$inferSelect;
+
+export interface IndexJobWithProject extends JobRow {
+  projectName: string;
+}
 
 export interface JobOptions {
   fullReindex?: boolean;
@@ -213,6 +217,53 @@ export async function cancelJob(id: number): Promise<JobRow> {
     );
 
   return row;
+}
+
+/**
+ * Return true if the project has any pending or running job.
+ *
+ * Used by the reindex request processor to avoid queuing a second concurrent
+ * index job for the same project.
+ */
+export async function hasActiveJobForProject(projectId: number): Promise<boolean> {
+  const db = getDb();
+  const result = await db.execute(sql`
+    SELECT 1 FROM prism_jobs
+    WHERE project_id = ${projectId}
+      AND status IN ('pending', 'running')
+    LIMIT 1
+  `);
+  return result.rows.length > 0;
+}
+
+/**
+ * Return the most recent index-type jobs, newest first, joined with project name.
+ */
+export async function listRecentIndexJobs(limit = 100): Promise<IndexJobWithProject[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: jobs.id,
+      projectId: jobs.projectId,
+      type: jobs.type,
+      status: jobs.status,
+      options: jobs.options,
+      error: jobs.error,
+      createdAt: jobs.createdAt,
+      startedAt: jobs.startedAt,
+      completedAt: jobs.completedAt,
+      projectName: projects.name,
+    })
+    .from(jobs)
+    .leftJoin(projects, eq(jobs.projectId, projects.id))
+    .where(eq(jobs.type, "index"))
+    .orderBy(desc(jobs.createdAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    ...r,
+    projectName: r.projectName ?? "Unknown",
+  }));
 }
 
 /**

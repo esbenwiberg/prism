@@ -29,6 +29,9 @@ import { symbolsRouter } from "./routes/symbols.js";
 import { purposeRouter } from "./routes/purpose.js";
 import { summariesRouter } from "./routes/summaries.js";
 import { pipelineRouter } from "./routes/pipeline.js";
+import { reindexRunsRouter } from "./routes/reindex-runs.js";
+import { apiRouter } from "./routes/api.js";
+import { apiKeysRouter } from "./routes/api-keys.js";
 
 /**
  * Create and configure the Express application.
@@ -50,6 +53,9 @@ export function createApp(): express.Express {
 
   // Body parsing for HTML form submissions (POST)
   app.use(express.urlencoded({ extended: false }));
+
+  // JSON body parsing for API routes
+  app.use(express.json());
 
   // Static files (htmx-ext.js etc.)
   // __dirname is available in CJS output; points to the compiled dist directory.
@@ -105,6 +111,12 @@ export function createApp(): express.Express {
   });
 
   // ---------------------------------------------------------------------------
+  // Machine-to-machine API routes (Bearer token auth, not session-based)
+  // ---------------------------------------------------------------------------
+
+  app.use(apiRouter);
+
+  // ---------------------------------------------------------------------------
   // Protected routes
   // ---------------------------------------------------------------------------
 
@@ -128,6 +140,8 @@ export function createApp(): express.Express {
   app.use(purposeRouter);
   app.use(summariesRouter);
   app.use(pipelineRouter);
+  app.use(reindexRunsRouter);
+  app.use(apiKeysRouter);
 
   return app;
 }

@@ -300,6 +300,31 @@ export const globalSettings = pgTable("prism_settings", {
 });
 
 // ---------------------------------------------------------------------------
+// prism_reindex_requests (queue for deduped reindex requests from external callers)
+// ---------------------------------------------------------------------------
+export const reindexRequests = pgTable("prism_reindex_requests", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" })
+    .unique(),
+  layers: jsonb("layers").notNull().$type<string[]>(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// prism_api_keys
+// ---------------------------------------------------------------------------
+export const apiKeys = pgTable("prism_api_keys", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  keyPrefix: text("key_prefix").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+});
+
+// ---------------------------------------------------------------------------
 // prism_jobs
 // ---------------------------------------------------------------------------
 export const jobs = pgTable("prism_jobs", {
