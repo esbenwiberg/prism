@@ -49,25 +49,18 @@ runMigrations().then(() => {
 });
 "
 
-# Start web server (background)
-echo "Prism: starting dashboard..."
+# Start dashboard (includes embedded worker)
+echo "Prism: starting dashboard and worker..."
 node packages/app/dist/cli/index.js serve &
 WEB_PID=$!
 
-# Start worker (background)
-echo "Prism: starting worker..."
-node packages/app/dist/cli/index.js worker &
-WORKER_PID=$!
+# Forward SIGTERM/SIGINT to the process
+trap "kill $WEB_PID 2>/dev/null; wait" SIGTERM SIGINT
 
-# Forward SIGTERM/SIGINT to both child processes
-trap "kill $WEB_PID $WORKER_PID 2>/dev/null; wait" SIGTERM SIGINT
-
-# Wait for either process to exit
-wait -n
+# Wait for the process to exit
+wait $WEB_PID
 EXIT_CODE=$?
 
-echo "Prism: a child process exited (code $EXIT_CODE), shutting down..."
-kill $WEB_PID $WORKER_PID 2>/dev/null
-wait
+echo "Prism: dashboard exited (code $EXIT_CODE), shutting down..."
 
 exit $EXIT_CODE

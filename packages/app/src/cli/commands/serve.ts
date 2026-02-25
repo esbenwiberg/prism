@@ -5,6 +5,7 @@
 import { Command } from "commander";
 import { logger, initConfig, runMigrations } from "@prism/core";
 import { startServer } from "../../dashboard/server.js";
+import { startWorker } from "../../worker/index.js";
 
 export const serveCommand = new Command("serve")
   .description("Start the Prism dashboard (Express + HTMX)")
@@ -16,4 +17,7 @@ export const serveCommand = new Command("serve")
 
     logger.info({ port }, "Starting dashboard");
     startServer(port);
+
+    logger.info("Starting embedded worker");
+    await startWorker();
   });
