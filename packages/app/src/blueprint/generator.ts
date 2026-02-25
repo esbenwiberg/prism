@@ -810,8 +810,11 @@ export function parsePhaseDetail(rawText: string): BlueprintPhase | null {
       milestones,
     };
   } catch {
+    const preview = rawText.length > 500
+      ? `${rawText.slice(0, 300)} … [${rawText.length} chars total] … ${rawText.slice(-300)}`
+      : rawText;
     logger.warn(
-      { err: { message: `Raw response (first 500 chars): ${rawText.slice(0, 500)}` } },
+      { err: { message: `Raw response: ${preview}` } },
       "Failed to parse phase detail as JSON",
     );
     return null;
