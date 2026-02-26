@@ -8,9 +8,11 @@
  * and detect the primary language, then updates the project row.
  */
 
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
 import { execSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
+import yaml from "js-yaml";
 import {
   logger,
   initConfig,
@@ -57,24 +59,46 @@ export const initCommand = new Command("init")
   .action(async (pathArg: string, opts: { name?: string; slug?: string }) => {
     const projectPath = resolve(pathArg);
     const projectName = opts.name ?? projectPath.split("/").pop() ?? "unnamed";
+    const slug = opts.slug ?? deriveSlugFromGitRemote(projectPath);
 
-    // Ensure config is loaded.
+    // Write prism.yaml immediately — no DB needed, just the slug from git.
+    const prismYamlPath = join(projectPath, "prism.yaml");
+    if (slug) {
+      const yamlContent = `# Prism project config\nslug: ${slug}\n`;
+      let shouldWrite = true;
+      if (existsSync(prismYamlPath)) {
+        const existing = yaml.load(readFileSync(prismYamlPath, "utf-8")) as { slug?: string };
+        if (existing?.slug === slug) shouldWrite = false;
+      }
+      if (shouldWrite) {
+        writeFileSync(prismYamlPath, yamlContent, "utf-8");
+        console.log(`Wrote prism.yaml to ${prismYamlPath}`);
+        logger.info({ path: prismYamlPath, slug }, "Wrote prism.yaml");
+      }
+    } else {
+      console.log(
+        "Note: no slug available (no git remote origin). Run `prism init --slug owner/repo` to enable MCP search.",
+      );
+    }
+
+    // Register in the DB so the indexer can pick it up.
+    // This requires DATABASE_URL — skip gracefully if not configured.
+    if (!process.env["DATABASE_URL"]) {
+      console.log("Skipping DB registration — DATABASE_URL not set. Run `prism serve` to configure the database.");
+      return;
+    }
+
     const config = await initConfig();
 
     logger.info({ projectPath, projectName }, "Registering project");
 
-    // Check if already registered.
     const existing = await getProjectByPath(projectPath);
     if (existing) {
-      logger.warn(
-        { id: existing.id, path: existing.path },
-        "Project already registered",
-      );
+      logger.warn({ id: existing.id, path: existing.path }, "Project already registered");
       console.log(`Project already registered (id=${existing.id}): ${existing.path}`);
       return;
     }
 
-    const slug = opts.slug ?? deriveSlugFromGitRemote(projectPath);
     const project = await createProject(projectName, projectPath, {
       ...(slug ? { slug } : {}),
     });
@@ -112,11 +136,7 @@ export const initCommand = new Command("init")
       }
     }
 
-    // Update the project row with file count and language.
-    await updateProject(project.id, {
-      totalFiles,
-      language: primaryLanguage,
-    });
+    await updateProject(project.id, { totalFiles, language: primaryLanguage });
 
     const displayLang = primaryLanguage
       ? LANGUAGE_DISPLAY_NAMES[primaryLanguage] ?? primaryLanguage
