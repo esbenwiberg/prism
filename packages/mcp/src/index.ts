@@ -215,7 +215,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   // 2. Query Prism search API
-  const url = `${PRISM_URL}/api/projects/${encodeURIComponent(slug)}/search`;
+  const url = `${PRISM_URL}/api/projects/${slug}/search`;
   let data: SearchResult;
   try {
     const response = await fetch(url, {

@@ -61,8 +61,8 @@ async function requireApiKey(req: Request, res: Response, next: NextFunction): P
 // POST /api/projects/:slug/search
 // ---------------------------------------------------------------------------
 
-apiRouter.post("/api/projects/:slug/search", requireApiKey, async (req, res) => {
-  const slug = decodeURIComponent(String(req.params.slug));
+apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
 
   const project = await getProjectBySlug(slug);
   if (!project) {
@@ -143,8 +143,8 @@ apiRouter.post("/api/projects/:slug/search", requireApiKey, async (req, res) => 
 // POST /api/projects/:slug/reindex
 // ---------------------------------------------------------------------------
 
-apiRouter.post("/api/projects/:slug/reindex", requireApiKey, async (req, res) => {
-  const slug = decodeURIComponent(String(req.params.slug));
+apiRouter.post("/api/projects/:owner/:repo/reindex", requireApiKey, async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
 
   const project = await getProjectBySlug(slug);
   if (!project) {
