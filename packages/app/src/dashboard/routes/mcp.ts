@@ -4,8 +4,11 @@
  * Exposes tools via StreamableHTTP transport so Claude Code
  * can connect as a remote MCP server. Direct DB access — no HTTP roundtrip.
  *
- * Route: POST /mcp?project=owner/repo  (+ GET, DELETE for protocol compliance)
+ * Route: POST /mcp  (+ GET, DELETE for protocol compliance)
  * Auth:  Bearer token via requireApiKey
+ *
+ * Every tool that targets a specific project takes a `slug` parameter
+ * (owner/repo format) so a single MCP connection can serve all projects.
  *
  * Tools:
  *   search_codebase    (read)     — semantic search
@@ -129,7 +132,7 @@ function formatResponse(query: string, slug: string, data: FormatInput): string 
 // Per-request MCP server factory
 // ---------------------------------------------------------------------------
 
-function createMcpServer(slug: string, permissions: string[]): Server {
+function createMcpServer(permissions: string[]): Server {
   const server = new Server(
     { name: "prism", version: "0.1.0" },
     { capabilities: { tools: {} } },
@@ -143,31 +146,31 @@ function createMcpServer(slug: string, permissions: string[]): Server {
     };
   }
 
+  const slugParam = {
+    type: "string" as const,
+    description: "Project slug in owner/repo format",
+  };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
         name: "search_codebase",
         description:
-          "Search the Prism-indexed codebase for relevant code, module summaries, and findings. " +
-          "Pass the current working directory so Prism can identify which project to query.",
+          "Search the Prism-indexed codebase for relevant code, module summaries, and findings.",
         inputSchema: {
           type: "object" as const,
           properties: {
+            slug: slugParam,
             query: {
               type: "string",
               description: "Natural language question about the codebase",
-            },
-            cwd: {
-              type: "string",
-              description:
-                "Current working directory. Used to locate prism.yaml and identify the project.",
             },
             maxResults: {
               type: "number",
               description: "Maximum number of code results to return (default: 15)",
             },
           },
-          required: ["query", "cwd"],
+          required: ["slug", "query"],
         },
       },
       {
@@ -182,10 +185,7 @@ function createMcpServer(slug: string, permissions: string[]): Server {
               type: "string",
               description: "Human-readable project name",
             },
-            slug: {
-              type: "string",
-              description: "Project slug in owner/repo format",
-            },
+            slug: slugParam,
             gitUrl: {
               type: "string",
               description: "Git clone URL (optional)",
@@ -201,10 +201,7 @@ function createMcpServer(slug: string, permissions: string[]): Server {
         inputSchema: {
           type: "object" as const,
           properties: {
-            slug: {
-              type: "string",
-              description: "Project slug in owner/repo format",
-            },
+            slug: slugParam,
           },
           required: ["slug"],
         },
@@ -216,12 +213,14 @@ function createMcpServer(slug: string, permissions: string[]): Server {
         inputSchema: {
           type: "object" as const,
           properties: {
+            slug: slugParam,
             layers: {
               type: "array",
               items: { type: "string" },
               description: 'Layers to reindex (default: ["structural"]). Valid: "structural", "semantic".',
             },
           },
+          required: ["slug"],
         },
       },
       {
@@ -230,7 +229,10 @@ function createMcpServer(slug: string, permissions: string[]): Server {
           "Get the current status of the project including index status, file count, last index time, and whether an active job is running.",
         inputSchema: {
           type: "object" as const,
-          properties: {},
+          properties: {
+            slug: slugParam,
+          },
+          required: ["slug"],
         },
       },
     ],
@@ -247,9 +249,9 @@ function createMcpServer(slug: string, permissions: string[]): Server {
       const denied = permissionError("read");
       if (denied) return denied;
 
-      const { query, maxResults = 15 } = args as {
+      const { slug, query, maxResults = 15 } = args as {
+        slug: string;
         query: string;
-        cwd: string;
         maxResults?: number;
       };
 
@@ -300,29 +302,29 @@ function createMcpServer(slug: string, permissions: string[]): Server {
       const denied = permissionError("register");
       if (denied) return denied;
 
-      const { name, slug: projectSlug, gitUrl } = args as {
+      const { name, slug, gitUrl } = args as {
         name: string;
         slug: string;
         gitUrl?: string;
       };
 
       // Check if already registered
-      const existing = await getProjectBySlug(projectSlug);
+      const existing = await getProjectBySlug(slug);
       if (existing) {
         return {
-          content: [{ type: "text" as const, text: `Project "${projectSlug}" is already registered (id: ${existing.id}).` }],
+          content: [{ type: "text" as const, text: `Project "${slug}" is already registered (id: ${existing.id}).` }],
         };
       }
 
-      const project = await createProject(name, `remote:${projectSlug}`, {
-        slug: projectSlug,
+      const project = await createProject(name, `remote:${slug}`, {
+        slug,
         gitUrl,
       });
 
       return {
         content: [{
           type: "text" as const,
-          text: `Project "${name}" registered successfully (id: ${project.id}, slug: ${projectSlug}).`,
+          text: `Project "${name}" registered successfully (id: ${project.id}, slug: ${slug}).`,
         }],
       };
     }
@@ -334,17 +336,17 @@ function createMcpServer(slug: string, permissions: string[]): Server {
       const denied = permissionError("register");
       if (denied) return denied;
 
-      const { slug: projectSlug } = args as { slug: string };
-      const project = await getProjectBySlug(projectSlug);
+      const { slug } = args as { slug: string };
+      const project = await getProjectBySlug(slug);
       if (!project) {
-        return { content: [{ type: "text" as const, text: `Project "${projectSlug}" not found in Prism.` }] };
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
       }
 
       await deleteProject(project.id);
-      logger.info({ projectId: project.id, slug: projectSlug }, "Project deleted via MCP");
+      logger.info({ projectId: project.id, slug }, "Project deleted via MCP");
 
       return {
-        content: [{ type: "text" as const, text: `Project "${projectSlug}" (id: ${project.id}) has been deleted.` }],
+        content: [{ type: "text" as const, text: `Project "${slug}" (id: ${project.id}) has been deleted.` }],
       };
     }
 
@@ -355,6 +357,7 @@ function createMcpServer(slug: string, permissions: string[]): Server {
       const denied = permissionError("index");
       if (denied) return denied;
 
+      const { slug } = args as { slug: string };
       const project = await getProjectBySlug(slug);
       if (!project) {
         return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
@@ -386,6 +389,7 @@ function createMcpServer(slug: string, permissions: string[]): Server {
       const denied = permissionError("read");
       if (denied) return denied;
 
+      const { slug } = args as { slug: string };
       const project = await getProjectBySlug(slug);
       if (!project) {
         return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
@@ -420,15 +424,9 @@ function createMcpServer(slug: string, permissions: string[]): Server {
 // ---------------------------------------------------------------------------
 
 mcpRouter.post("/mcp", requireApiKey, async (req, res) => {
-  const slug = req.query.project as string | undefined;
-  if (!slug) {
-    res.status(400).json({ error: "Missing ?project=owner/repo query parameter" });
-    return;
-  }
-
   try {
     const permissions = req.apiKeyPermissions ?? [];
-    const server = createMcpServer(slug, permissions);
+    const server = createMcpServer(permissions);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     await server.connect(transport);

@@ -26,14 +26,14 @@ ${card("3. Connect Claude Code", `
   "mcpServers": {
     "prism": {
       "type": "url",
-      "url": "PRISM_URL/mcp?project=owner/repo",
+      "url": "PRISM_URL/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
       }
     }
   }
 }</pre>
-  <p class="text-sm text-slate-400 mt-2">Replace <code class="font-mono text-xs bg-slate-700 px-1 py-0.5 rounded">PRISM_URL</code>, <code class="font-mono text-xs bg-slate-700 px-1 py-0.5 rounded">owner/repo</code>, and <code class="font-mono text-xs bg-slate-700 px-1 py-0.5 rounded">YOUR_API_KEY</code> with your values.</p>
+  <p class="text-sm text-slate-400 mt-2">Replace <code class="font-mono text-xs bg-slate-700 px-1 py-0.5 rounded">PRISM_URL</code> and <code class="font-mono text-xs bg-slate-700 px-1 py-0.5 rounded">YOUR_API_KEY</code> with your values. The project slug is passed per tool call.</p>
 `)}
 
 ${card("4. Trigger indexing", `
