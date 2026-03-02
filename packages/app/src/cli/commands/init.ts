@@ -75,6 +75,19 @@ export const initCommand = new Command("init")
         console.log(`Wrote prism.yaml to ${prismYamlPath}`);
         logger.info({ path: prismYamlPath, slug }, "Wrote prism.yaml");
       }
+      console.log(
+        "\nTo connect Claude Code, add this to ~/.claude/settings.json:\n" +
+        JSON.stringify({
+          mcpServers: {
+            prism: {
+              type: "url",
+              url: `PRISM_URL/mcp?project=${slug}`,
+              headers: { Authorization: "Bearer PRISM_API_KEY" },
+            },
+          },
+        }, null, 2) +
+        "\nReplace PRISM_URL and PRISM_API_KEY with your actual values.",
+      );
     } else {
       console.log(
         "Note: no slug available (no git remote origin). Run `prism init --slug owner/repo` to enable MCP search.",

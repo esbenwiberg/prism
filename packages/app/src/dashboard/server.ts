@@ -31,6 +31,7 @@ import { summariesRouter } from "./routes/summaries.js";
 import { pipelineRouter } from "./routes/pipeline.js";
 import { reindexRunsRouter } from "./routes/reindex-runs.js";
 import { apiRouter } from "./routes/api.js";
+import { mcpRouter } from "./routes/mcp.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 
 /**
@@ -115,6 +116,7 @@ export function createApp(): express.Express {
   // ---------------------------------------------------------------------------
 
   app.use(apiRouter);
+  app.use(mcpRouter);
 
   // ---------------------------------------------------------------------------
   // Protected routes

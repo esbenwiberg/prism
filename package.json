@@ -5,8 +5,7 @@
   "description": "Codebase Analysis & Redesign Tool",
   "workspaces": [
     "packages/core",
-    "packages/app",
-    "packages/mcp"
+    "packages/app"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
