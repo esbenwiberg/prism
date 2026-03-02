@@ -11,8 +11,8 @@
  */
 
 import { Router } from "express";
-import { listApiKeys, createApiKey, deleteApiKey, logger } from "@prism/core";
-import { apiKeysPage, apiKeysFragment } from "../views/index.js";
+import { listApiKeys, createApiKey, deleteApiKey, getApiKeyById, updateApiKey, logger } from "@prism/core";
+import { apiKeysPage, apiKeysFragment, apiKeyEditFragment } from "../views/index.js";
 
 export const apiKeysRouter = Router();
 
@@ -78,6 +78,73 @@ apiKeysRouter.post("/api-keys", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "Failed to create API key");
     res.status(500).send("Failed to create API key");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api-keys/:id/edit — edit form
+// ---------------------------------------------------------------------------
+
+apiKeysRouter.get("/api-keys/:id/edit", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      res.status(400).send("Invalid key ID");
+      return;
+    }
+
+    const apiKey = await getApiKeyById(id);
+    if (!apiKey) {
+      res.status(404).send("API key not found");
+      return;
+    }
+
+    res.send(apiKeyEditFragment({ apiKey }));
+  } catch (err) {
+    logger.error({ err }, "Failed to load API key edit form");
+    res.status(500).send("Internal server error");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api-keys/:id — update permissions
+// ---------------------------------------------------------------------------
+
+apiKeysRouter.put("/api-keys/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      res.status(400).send("Invalid key ID");
+      return;
+    }
+
+    const { perm_read, perm_register, perm_index } = req.body as {
+      perm_read?: string;
+      perm_register?: string;
+      perm_index?: string;
+    };
+
+    const permissions: string[] = [];
+    if (perm_read) permissions.push("read");
+    if (perm_register) permissions.push("register");
+    if (perm_index) permissions.push("index");
+    if (permissions.length === 0) permissions.push("read");
+
+    await updateApiKey(id, { permissions });
+    logger.info({ id, permissions }, "API key permissions updated");
+
+    const keys = await listApiKeys();
+    const userName = req.session.user?.name ?? "User";
+
+    if (req.headers["hx-request"]) {
+      res.send(apiKeysFragment({ apiKeys: keys, userName, flash: "Permissions updated." }));
+      return;
+    }
+
+    res.redirect("/api-keys");
+  } catch (err) {
+    logger.error({ err }, "Failed to update API key");
+    res.status(500).send("Failed to update API key");
   }
 });
 

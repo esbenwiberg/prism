@@ -168,6 +168,8 @@ export {
   createApiKey,
   listApiKeys,
   deleteApiKey,
+  getApiKeyById,
+  updateApiKey,
   verifyApiKey,
   type ApiKeyRow,
   type CreateApiKeyInput,

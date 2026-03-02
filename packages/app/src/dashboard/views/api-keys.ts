@@ -103,10 +103,16 @@ function apiKeysContent(data: ApiKeysPageData): string {
     {
       header: "",
       render: (k) =>
-        `<button hx-delete="/api-keys/${k.id}" hx-target="#main-content" hx-confirm="Revoke API key &quot;${escapeHtml(k.name)}&quot;? Any callers using it will immediately lose access."
-          class="rounded-lg bg-red-400/10 px-3 py-1 text-xs font-medium text-red-400 ring-1 ring-inset ring-red-400/20 hover:bg-red-400/20 transition-colors">
-          Revoke
-        </button>`,
+        `<div class="flex gap-2 justify-end">
+          <button hx-get="/api-keys/${k.id}/edit" hx-target="#main-content"
+            class="rounded-lg bg-slate-400/10 px-3 py-1 text-xs font-medium text-slate-300 ring-1 ring-inset ring-slate-400/20 hover:bg-slate-400/20 transition-colors">
+            Edit
+          </button>
+          <button hx-delete="/api-keys/${k.id}" hx-target="#main-content" hx-confirm="Revoke API key &quot;${escapeHtml(k.name)}&quot;? Any callers using it will immediately lose access."
+            class="rounded-lg bg-red-400/10 px-3 py-1 text-xs font-medium text-red-400 ring-1 ring-inset ring-red-400/20 hover:bg-red-400/20 transition-colors">
+            Revoke
+          </button>
+        </div>`,
       align: "right",
     },
   ];
@@ -184,4 +190,62 @@ export function apiKeysPage(data: ApiKeysPageData): string {
  */
 export function apiKeysFragment(data: ApiKeysPageData): string {
   return apiKeysContent(data);
+}
+
+// ---------------------------------------------------------------------------
+// Edit form (HTMX fragment — replaces #main-content)
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyEditData {
+  apiKey: ApiKeyRow;
+  flash?: string;
+}
+
+export function apiKeyEditFragment(data: ApiKeyEditData): string {
+  const { apiKey, flash } = data;
+  const perms = (apiKey.permissions ?? ["read"]) as string[];
+
+  const flashHtml = flash
+    ? `<div class="rounded-lg border border-red-400/30 bg-red-400/5 px-4 py-3 mb-4 text-sm text-red-400">${escapeHtml(flash)}</div>`
+    : "";
+
+  return flashHtml + `
+<h2 class="text-2xl font-bold text-slate-50 mb-6">Edit API Key</h2>
+<div class="rounded-xl border border-slate-700 bg-slate-800 p-6">
+  <form hx-put="/api-keys/${apiKey.id}" hx-target="#main-content">
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1">Name</label>
+        <p class="text-sm text-slate-200">${escapeHtml(apiKey.name)} <code class="text-xs font-mono text-slate-500">(${escapeHtml(apiKey.keyPrefix)}…)</code></p>
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Permissions</label>
+        <div class="flex gap-4 items-center py-1.5">
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_read" value="1" ${perms.includes("read") ? "checked" : ""} class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            read
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_register" value="1" ${perms.includes("register") ? "checked" : ""} class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            register
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_index" value="1" ${perms.includes("index") ? "checked" : ""} class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            index
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          class="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400">
+          Save
+        </button>
+        <button type="button" hx-get="/api-keys" hx-target="#main-content"
+          class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </form>
+</div>`;
 }

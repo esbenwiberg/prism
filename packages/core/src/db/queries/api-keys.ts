@@ -82,6 +82,31 @@ export async function deleteApiKey(id: number): Promise<void> {
 }
 
 /**
+ * Update an API key's permissions by ID.
+ */
+export async function updateApiKey(
+  id: number,
+  updates: { permissions: string[] },
+): Promise<ApiKeyRow | undefined> {
+  const db = getDb();
+  const [row] = await db
+    .update(apiKeys)
+    .set({ permissions: updates.permissions })
+    .where(eq(apiKeys.id, id))
+    .returning();
+  return row;
+}
+
+/**
+ * Get a single API key by ID.
+ */
+export async function getApiKeyById(id: number): Promise<ApiKeyRow | undefined> {
+  const db = getDb();
+  const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+  return row;
+}
+
+/**
  * Verify a raw Bearer token against the stored key hashes.
  *
  * If a match is found, `last_used_at` is updated and the key's permissions
