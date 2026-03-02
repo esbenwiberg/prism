@@ -19,7 +19,7 @@ import {
   upsertReindexRequest,
   logger,
 } from "@prism/core";
-import { requireApiKey } from "../../auth/api-key.js";
+import { requireApiKey, requirePermission } from "../../auth/api-key.js";
 
 export const apiRouter = Router();
 
@@ -27,7 +27,7 @@ export const apiRouter = Router();
 // POST /api/projects/:slug/search
 // ---------------------------------------------------------------------------
 
-apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, async (req, res) => {
+apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, requirePermission("read"), async (req, res) => {
   const slug = `${req.params.owner}/${req.params.repo}`;
 
   const project = await getProjectBySlug(slug);
@@ -109,7 +109,7 @@ apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, async (req, r
 // POST /api/projects/:slug/reindex
 // ---------------------------------------------------------------------------
 
-apiRouter.post("/api/projects/:owner/:repo/reindex", requireApiKey, async (req, res) => {
+apiRouter.post("/api/projects/:owner/:repo/reindex", requireApiKey, requirePermission("index"), async (req, res) => {
   const slug = `${req.params.owner}/${req.params.repo}`;
 
   const project = await getProjectBySlug(slug);

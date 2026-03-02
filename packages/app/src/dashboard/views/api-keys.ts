@@ -35,6 +35,17 @@ function formatDate(date: Date | null): string {
   });
 }
 
+const PERM_BADGE_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
+  read: { bg: "bg-blue-400/10", text: "text-blue-400", ring: "ring-blue-400/20" },
+  register: { bg: "bg-emerald-400/10", text: "text-emerald-400", ring: "ring-emerald-400/20" },
+  index: { bg: "bg-amber-400/10", text: "text-amber-400", ring: "ring-amber-400/20" },
+};
+
+function permBadge(perm: string): string {
+  const colors = PERM_BADGE_COLORS[perm] ?? { bg: "bg-slate-400/10", text: "text-slate-400", ring: "ring-slate-400/20" };
+  return `<span class="inline-flex items-center rounded-md ${colors.bg} px-2 py-0.5 text-xs font-medium ${colors.text} ring-1 ring-inset ${colors.ring}">${escapeHtml(perm)}</span>`;
+}
+
 // ---------------------------------------------------------------------------
 // Content
 // ---------------------------------------------------------------------------
@@ -75,6 +86,13 @@ function apiKeysContent(data: ApiKeysPageData): string {
       render: (k) => `<code class="text-xs font-mono text-slate-400">${escapeHtml(k.keyPrefix)}…</code>`,
     },
     {
+      header: "Permissions",
+      render: (k) => {
+        const perms = (k.permissions ?? ["read"]) as string[];
+        return `<div class="flex gap-1.5 flex-wrap">${perms.map(permBadge).join("")}</div>`;
+      },
+    },
+    {
       header: "Created",
       render: (k) => `<span class="text-slate-400">${escapeHtml(formatDate(k.createdAt))}</span>`,
     },
@@ -110,6 +128,23 @@ function apiKeysContent(data: ApiKeysPageData): string {
         <label class="block text-sm font-medium text-slate-300">Name</label>
         <input type="text" name="name" required placeholder="e.g. hive-dev"
           class="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-slate-300">Permissions</label>
+        <div class="flex gap-4 items-center py-1.5">
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_read" value="1" checked class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            read
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_register" value="1" class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            register
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-slate-300">
+            <input type="checkbox" name="perm_index" value="1" class="rounded border-slate-600 bg-slate-900 text-purple-500 focus:ring-purple-500" />
+            index
+          </label>
+        </div>
       </div>
       <div>
         <button type="submit"

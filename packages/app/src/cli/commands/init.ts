@@ -8,15 +8,12 @@
  * and detect the primary language, then updates the project row.
  */
 
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
-import yaml from "js-yaml";
 import {
   logger,
   initConfig,
-  getConfig,
   createProject,
   getProjectByPath,
   updateProject,
@@ -61,36 +58,9 @@ export const initCommand = new Command("init")
     const projectName = opts.name ?? projectPath.split("/").pop() ?? "unnamed";
     const slug = opts.slug ?? deriveSlugFromGitRemote(projectPath);
 
-    // Write prism.yaml immediately — no DB needed, just the slug from git.
-    const prismYamlPath = join(projectPath, "prism.yaml");
-    if (slug) {
-      const yamlContent = `# Prism project config\nslug: ${slug}\n`;
-      let shouldWrite = true;
-      if (existsSync(prismYamlPath)) {
-        const existing = yaml.load(readFileSync(prismYamlPath, "utf-8")) as { slug?: string };
-        if (existing?.slug === slug) shouldWrite = false;
-      }
-      if (shouldWrite) {
-        writeFileSync(prismYamlPath, yamlContent, "utf-8");
-        console.log(`Wrote prism.yaml to ${prismYamlPath}`);
-        logger.info({ path: prismYamlPath, slug }, "Wrote prism.yaml");
-      }
+    if (!slug) {
       console.log(
-        "\nTo connect Claude Code, add this to ~/.claude/settings.json:\n" +
-        JSON.stringify({
-          mcpServers: {
-            prism: {
-              type: "url",
-              url: `PRISM_URL/mcp?project=${slug}`,
-              headers: { Authorization: "Bearer PRISM_API_KEY" },
-            },
-          },
-        }, null, 2) +
-        "\nReplace PRISM_URL and PRISM_API_KEY with your actual values.",
-      );
-    } else {
-      console.log(
-        "Note: no slug available (no git remote origin). Run `prism init --slug owner/repo` to enable MCP search.",
+        "Note: no slug available (no git remote origin). Run `prism init --slug owner/repo` to set one.",
       );
     }
 

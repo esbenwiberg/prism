@@ -19,12 +19,17 @@ export type ApiKeyRow = typeof apiKeys.$inferSelect;
 
 export interface CreateApiKeyInput {
   name: string;
+  permissions?: string[];
 }
 
 export interface CreateApiKeyResult {
   row: ApiKeyRow;
   /** The full raw key — shown once, never stored. */
   rawKey: string;
+}
+
+export interface VerifyApiKeyResult {
+  permissions: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -50,10 +55,11 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<CreateApiK
   const rawKey = `prism_${randomBytes(32).toString("hex")}`;
   const keyHash = sha256(rawKey);
   const keyPrefix = rawKey.slice(0, 10);
+  const permissions = input.permissions ?? ["read"];
 
   const [row] = await db
     .insert(apiKeys)
-    .values({ name: input.name, keyHash, keyPrefix })
+    .values({ name: input.name, keyHash, keyPrefix, permissions })
     .returning();
 
   return { row, rawKey };
@@ -78,19 +84,19 @@ export async function deleteApiKey(id: number): Promise<void> {
 /**
  * Verify a raw Bearer token against the stored key hashes.
  *
- * If a match is found, `last_used_at` is updated and `true` is returned.
- * Returns `false` if no match.
+ * If a match is found, `last_used_at` is updated and the key's permissions
+ * are returned. Returns `null` if no match.
  */
-export async function verifyApiKey(rawToken: string): Promise<boolean> {
+export async function verifyApiKey(rawToken: string): Promise<VerifyApiKeyResult | null> {
   const db = getDb();
   const hash = sha256(rawToken);
   const [row] = await db.select().from(apiKeys).where(eq(apiKeys.keyHash, hash)).limit(1);
-  if (!row) return false;
+  if (!row) return null;
 
   await db
     .update(apiKeys)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiKeys.id, row.id));
 
-  return true;
+  return { permissions: row.permissions };
 }

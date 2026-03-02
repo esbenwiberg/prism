@@ -43,14 +43,25 @@ apiKeysRouter.get("/api-keys", async (req, res) => {
 
 apiKeysRouter.post("/api-keys", async (req, res) => {
   try {
-    const { name } = req.body as { name?: string };
+    const { name, perm_read, perm_register, perm_index } = req.body as {
+      name?: string;
+      perm_read?: string;
+      perm_register?: string;
+      perm_index?: string;
+    };
 
     if (!name || !name.trim()) {
       res.status(400).send("Name is required");
       return;
     }
 
-    const { row, rawKey } = await createApiKey({ name: name.trim() });
+    const permissions: string[] = [];
+    if (perm_read) permissions.push("read");
+    if (perm_register) permissions.push("register");
+    if (perm_index) permissions.push("index");
+    if (permissions.length === 0) permissions.push("read");
+
+    const { row, rawKey } = await createApiKey({ name: name.trim(), permissions });
     logger.info({ id: row.id, name: row.name, prefix: row.keyPrefix }, "API key created");
 
     const keys = await listApiKeys();

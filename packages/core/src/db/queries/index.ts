@@ -52,6 +52,7 @@ export {
   failIndexRun,
   getLatestIndexRun,
   getIndexRunsByProjectId,
+  getLastCompletedIndexTime,
   type IndexRunRow,
 } from "./index-runs.js";
 
@@ -171,4 +172,5 @@ export {
   type ApiKeyRow,
   type CreateApiKeyInput,
   type CreateApiKeyResult,
+  type VerifyApiKeyResult,
 } from "./api-keys.js";

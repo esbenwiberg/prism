@@ -7,7 +7,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { indexRuns } from "../schema.js";
 import type { IndexStatus, LayerName } from "../../domain/types.js";
@@ -141,4 +141,21 @@ export async function getIndexRunsByProjectId(
     .from(indexRuns)
     .where(eq(indexRuns.projectId, projectId))
     .orderBy(indexRuns.createdAt);
+}
+
+/**
+ * Get the completion time of the most recent successful index run for a project.
+ * Returns `null` if no completed runs exist.
+ */
+export async function getLastCompletedIndexTime(
+  projectId: number,
+): Promise<Date | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ completedAt: indexRuns.completedAt })
+    .from(indexRuns)
+    .where(and(eq(indexRuns.projectId, projectId), eq(indexRuns.status, "completed")))
+    .orderBy(desc(indexRuns.completedAt))
+    .limit(1);
+  return row?.completedAt ?? null;
 }

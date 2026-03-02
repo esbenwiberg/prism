@@ -71,6 +71,13 @@
       "when": 1771935100000,
       "tag": "0009_add_api_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1771935200000,
+      "tag": "0010_add_api_key_permissions",
+      "breakpoints": true
     }
   ]
 }

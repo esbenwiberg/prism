@@ -1,11 +1,17 @@
 /**
  * MCP (Model Context Protocol) route handler.
  *
- * Exposes a `search_codebase` tool via StreamableHTTP transport so Claude Code
+ * Exposes tools via StreamableHTTP transport so Claude Code
  * can connect as a remote MCP server. Direct DB access — no HTTP roundtrip.
  *
  * Route: POST /mcp?project=owner/repo  (+ GET, DELETE for protocol compliance)
  * Auth:  Bearer token via requireApiKey
+ *
+ * Tools:
+ *   search_codebase    (read)     — semantic search
+ *   register_project   (register) — register a new project
+ *   trigger_reindex    (index)    — enqueue reindex request
+ *   get_project_status (read)     — project status overview
  */
 
 import { Router } from "express";
@@ -21,6 +27,11 @@ import {
   createEmbedder,
   similaritySearch,
   getFindingsByProjectId,
+  createProject,
+  upsertReindexRequest,
+  hasActiveJobForProject,
+  getLastCompletedIndexTime,
+  getProjectFiles,
   logger,
 } from "@prism/core";
 import { requireApiKey } from "../../auth/api-key.js";
@@ -116,11 +127,19 @@ function formatResponse(query: string, slug: string, data: FormatInput): string 
 // Per-request MCP server factory
 // ---------------------------------------------------------------------------
 
-function createMcpServer(slug: string): Server {
+function createMcpServer(slug: string, permissions: string[]): Server {
   const server = new Server(
     { name: "prism", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
+
+  // Helper: check if caller has a permission, return error text content if not
+  function permissionError(required: string): { content: Array<{ type: "text"; text: string }> } | null {
+    if (permissions.includes(required)) return null;
+    return {
+      content: [{ type: "text" as const, text: `Permission denied: this API key lacks the "${required}" permission.` }],
+    };
+  }
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
@@ -149,63 +168,210 @@ function createMcpServer(slug: string): Server {
           required: ["query", "cwd"],
         },
       },
+      {
+        name: "register_project",
+        description:
+          "Register a new project in Prism for indexing. " +
+          "Provide a human-readable name and the owner/repo slug. Optionally provide a git URL.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            name: {
+              type: "string",
+              description: "Human-readable project name",
+            },
+            slug: {
+              type: "string",
+              description: "Project slug in owner/repo format",
+            },
+            gitUrl: {
+              type: "string",
+              description: "Git clone URL (optional)",
+            },
+          },
+          required: ["name", "slug"],
+        },
+      },
+      {
+        name: "trigger_reindex",
+        description:
+          "Trigger a reindex of the project. Optionally specify which layers to reindex.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            layers: {
+              type: "array",
+              items: { type: "string" },
+              description: 'Layers to reindex (default: ["structural"]). Valid: "structural", "semantic".',
+            },
+          },
+        },
+      },
+      {
+        name: "get_project_status",
+        description:
+          "Get the current status of the project including index status, file count, last index time, and whether an active job is running.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+        },
+      },
     ],
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    if (request.params.name !== "search_codebase") {
-      throw new Error(`Unknown tool: ${request.params.name}`);
+    const toolName = request.params.name;
+    const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+
+    // -----------------------------------------------------------------------
+    // search_codebase
+    // -----------------------------------------------------------------------
+    if (toolName === "search_codebase") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { query, maxResults = 15 } = args as {
+        query: string;
+        cwd: string;
+        maxResults?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      if (project.indexStatus !== "completed" && project.indexStatus !== "partial") {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" is not yet indexed.` }] };
+      }
+
+      try {
+        const config = getConfig();
+        const embedder = createEmbedder(config.semantic);
+        const [queryVector] = await embedder.embed([query]);
+
+        const maxSummaries = 30;
+        const maxFindings = 20;
+        const searchLimit = maxResults + maxSummaries;
+        const allResults = await similaritySearch(project.id, queryVector, searchLimit);
+
+        const relevantCode = allResults
+          .filter((r) => r.level !== "module" && r.level !== "system")
+          .slice(0, maxResults);
+
+        const moduleSummaries = allResults
+          .filter((r) => r.level === "module")
+          .slice(0, maxSummaries);
+
+        const allFindings = await getFindingsByProjectId(project.id);
+        const findings = allFindings
+          .filter((f) => ["critical", "high", "medium"].includes(f.severity))
+          .slice(0, maxFindings);
+
+        const text = formatResponse(query, slug, { relevantCode, moduleSummaries, findings });
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "MCP search failed");
+        return { content: [{ type: "text" as const, text: `Search failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
     }
 
-    const { query, maxResults = 15 } = request.params.arguments as {
-      query: string;
-      cwd: string;
-      maxResults?: number;
-    };
+    // -----------------------------------------------------------------------
+    // register_project
+    // -----------------------------------------------------------------------
+    if (toolName === "register_project") {
+      const denied = permissionError("register");
+      if (denied) return denied;
 
-    // Look up the project from the slug in the URL (not from cwd/filesystem)
-    const project = await getProjectBySlug(slug);
-    if (!project) {
+      const { name, slug: projectSlug, gitUrl } = args as {
+        name: string;
+        slug: string;
+        gitUrl?: string;
+      };
+
+      // Check if already registered
+      const existing = await getProjectBySlug(projectSlug);
+      if (existing) {
+        return {
+          content: [{ type: "text" as const, text: `Project "${projectSlug}" is already registered (id: ${existing.id}).` }],
+        };
+      }
+
+      const project = await createProject(name, `remote:${projectSlug}`, {
+        slug: projectSlug,
+        gitUrl,
+      });
+
       return {
-        content: [{ type: "text", text: `Project "${slug}" not found in Prism.` }],
+        content: [{
+          type: "text" as const,
+          text: `Project "${name}" registered successfully (id: ${project.id}, slug: ${projectSlug}).`,
+        }],
       };
     }
 
-    if (project.indexStatus !== "completed" && project.indexStatus !== "partial") {
+    // -----------------------------------------------------------------------
+    // trigger_reindex
+    // -----------------------------------------------------------------------
+    if (toolName === "trigger_reindex") {
+      const denied = permissionError("index");
+      if (denied) return denied;
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      const rawLayers = (args.layers as string[] | undefined) ?? ["structural"];
+      const validLayers = new Set(["structural", "semantic"]);
+      const invalid = rawLayers.filter((l) => !validLayers.has(l));
+      if (invalid.length > 0) {
+        return {
+          content: [{ type: "text" as const, text: `Invalid layer(s): ${invalid.join(", ")}. Valid layers: structural, semantic.` }],
+        };
+      }
+
+      await upsertReindexRequest(project.id, rawLayers);
+
       return {
-        content: [{ type: "text", text: `Project "${slug}" is not yet indexed.` }],
+        content: [{
+          type: "text" as const,
+          text: `Reindex request queued for "${slug}" (layers: ${rawLayers.join(", ")}).`,
+        }],
       };
     }
 
-    try {
-      const config = getConfig();
-      const embedder = createEmbedder(config.semantic);
-      const [queryVector] = await embedder.embed([query]);
+    // -----------------------------------------------------------------------
+    // get_project_status
+    // -----------------------------------------------------------------------
+    if (toolName === "get_project_status") {
+      const denied = permissionError("read");
+      if (denied) return denied;
 
-      const maxSummaries = 30;
-      const maxFindings = 20;
-      const searchLimit = maxResults + maxSummaries;
-      const allResults = await similaritySearch(project.id, queryVector, searchLimit);
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
 
-      const relevantCode = allResults
-        .filter((r) => r.level !== "module" && r.level !== "system")
-        .slice(0, maxResults);
+      const [lastIndexTime, activeJob, files] = await Promise.all([
+        getLastCompletedIndexTime(project.id),
+        hasActiveJobForProject(project.id),
+        getProjectFiles(project.id),
+      ]);
 
-      const moduleSummaries = allResults
-        .filter((r) => r.level === "module")
-        .slice(0, maxSummaries);
+      const lines: string[] = [
+        `## Project Status: ${slug}`,
+        "",
+        `- **Index status:** ${project.indexStatus}`,
+        `- **Total files:** ${files.length}`,
+        `- **Last indexed:** ${lastIndexTime ? lastIndexTime.toISOString() : "never"}`,
+        `- **Active job:** ${activeJob ? "yes" : "no"}`,
+      ];
 
-      const allFindings = await getFindingsByProjectId(project.id);
-      const findings = allFindings
-        .filter((f) => ["critical", "high", "medium"].includes(f.severity))
-        .slice(0, maxFindings);
-
-      const text = formatResponse(query, slug, { relevantCode, moduleSummaries, findings });
-      return { content: [{ type: "text", text }] };
-    } catch (err) {
-      logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "MCP search failed");
-      return { content: [{ type: "text", text: `Search failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     }
+
+    throw new Error(`Unknown tool: ${toolName}`);
   });
 
   return server;
@@ -223,7 +389,8 @@ mcpRouter.post("/mcp", requireApiKey, async (req, res) => {
   }
 
   try {
-    const server = createMcpServer(slug);
+    const permissions = req.apiKeyPermissions ?? [];
+    const server = createMcpServer(slug, permissions);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     await server.connect(transport);
