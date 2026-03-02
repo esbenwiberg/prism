@@ -121,3 +121,5 @@ export {
   type ApiKeysPageData,
   type ApiKeyEditData,
 } from "./api-keys.js";
+
+export { getStartedPage } from "./get-started.js";

@@ -17,6 +17,7 @@ import {
   similaritySearch,
   getFindingsByProjectId,
   upsertReindexRequest,
+  deleteProject,
   logger,
 } from "@prism/core";
 import { requireApiKey, requirePermission } from "../../auth/api-key.js";
@@ -136,4 +137,23 @@ apiRouter.post("/api/projects/:owner/:repo/reindex", requireApiKey, requirePermi
   logger.info({ slug, projectId: project.id, layers }, "Reindex request queued");
 
   res.status(202).json({ queued: true });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/projects/:owner/:repo
+// ---------------------------------------------------------------------------
+
+apiRouter.delete("/api/projects/:owner/:repo", requireApiKey, requirePermission("register"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+
+  const project = await getProjectBySlug(slug);
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+
+  await deleteProject(project.id);
+  logger.info({ slug, projectId: project.id }, "Project deleted via API");
+
+  res.json({ deleted: true });
 });

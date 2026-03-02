@@ -10,6 +10,7 @@
  * Tools:
  *   search_codebase    (read)     — semantic search
  *   register_project   (register) — register a new project
+ *   delete_project     (register) — delete a project and all its data
  *   trigger_reindex    (index)    — enqueue reindex request
  *   get_project_status (read)     — project status overview
  */
@@ -28,6 +29,7 @@ import {
   similaritySearch,
   getFindingsByProjectId,
   createProject,
+  deleteProject,
   upsertReindexRequest,
   hasActiveJobForProject,
   getLastCompletedIndexTime,
@@ -193,6 +195,21 @@ function createMcpServer(slug: string, permissions: string[]): Server {
         },
       },
       {
+        name: "delete_project",
+        description:
+          "Delete a project and all its indexed data from Prism. This action is irreversible.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: {
+              type: "string",
+              description: "Project slug in owner/repo format",
+            },
+          },
+          required: ["slug"],
+        },
+      },
+      {
         name: "trigger_reindex",
         description:
           "Trigger a reindex of the project. Optionally specify which layers to reindex.",
@@ -307,6 +324,27 @@ function createMcpServer(slug: string, permissions: string[]): Server {
           type: "text" as const,
           text: `Project "${name}" registered successfully (id: ${project.id}, slug: ${projectSlug}).`,
         }],
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // delete_project
+    // -----------------------------------------------------------------------
+    if (toolName === "delete_project") {
+      const denied = permissionError("register");
+      if (denied) return denied;
+
+      const { slug: projectSlug } = args as { slug: string };
+      const project = await getProjectBySlug(projectSlug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${projectSlug}" not found in Prism.` }] };
+      }
+
+      await deleteProject(project.id);
+      logger.info({ projectId: project.id, slug: projectSlug }, "Project deleted via MCP");
+
+      return {
+        content: [{ type: "text" as const, text: `Project "${projectSlug}" (id: ${project.id}) has been deleted.` }],
       };
     }
 

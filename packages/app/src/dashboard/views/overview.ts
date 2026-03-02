@@ -46,6 +46,15 @@ export function overviewPage(
       header: "Status",
       render: (p) => statusBadge(p.indexStatus),
     },
+    {
+      header: "",
+      render: (p) =>
+        `<button hx-delete="/projects/${p.id}"
+          hx-confirm="Are you sure you want to delete ${escapeHtml(p.name)}? All indexed data will be permanently removed."
+          hx-target="#main-content"
+          class="text-xs text-red-400/70 hover:text-red-400 transition-colors">Delete</button>`,
+      align: "right",
+    },
   ];
 
   const addButton = `<a href="/projects/new"
@@ -93,6 +102,15 @@ export function overviewFragment(projects: Project[]): string {
     {
       header: "Status",
       render: (p) => statusBadge(p.indexStatus),
+    },
+    {
+      header: "",
+      render: (p) =>
+        `<button hx-delete="/projects/${p.id}"
+          hx-confirm="Are you sure you want to delete ${escapeHtml(p.name)}? All indexed data will be permanently removed."
+          hx-target="#main-content"
+          class="text-xs text-red-400/70 hover:text-red-400 transition-colors">Delete</button>`,
+      align: "right",
     },
   ];
 

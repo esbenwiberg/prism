@@ -33,6 +33,7 @@ import { reindexRunsRouter } from "./routes/reindex-runs.js";
 import { apiRouter } from "./routes/api.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
+import { getStartedRouter } from "./routes/get-started.js";
 
 /**
  * Create and configure the Express application.
@@ -144,6 +145,7 @@ export function createApp(): express.Express {
   app.use(pipelineRouter);
   app.use(reindexRunsRouter);
   app.use(apiKeysRouter);
+  app.use(getStartedRouter);
 
   return app;
 }

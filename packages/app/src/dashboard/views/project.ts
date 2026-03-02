@@ -42,6 +42,12 @@ function actionButtons(project: Project): string {
       class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-slate-50">
       Re-index
     </button>
+    <button hx-delete="/projects/${project.id}"
+      hx-confirm="Are you sure you want to delete this project? All indexed data will be permanently removed."
+      hx-target="#main-content"
+      class="inline-flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300 ml-auto">
+      Delete project
+    </button>
   </div>
   <div class="mt-5">
     <h3 class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Generate Blueprints</h3>

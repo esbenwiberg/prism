@@ -12,6 +12,7 @@ import {
   cancelJob,
   getJobsByProjectId,
   getIndexRunsByProjectId,
+  deleteProject,
   logger,
 } from "@prism/core";
 import {
@@ -55,6 +56,40 @@ projectRouter.get("/projects/:id", async (req, res) => {
   }
 
   res.send(projectPage(data));
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /projects/:id — delete a project and all its data
+// ---------------------------------------------------------------------------
+
+projectRouter.delete("/projects/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).send("Invalid project ID");
+      return;
+    }
+
+    const project = await getProject(id);
+    if (!project) {
+      res.status(404).send("Project not found");
+      return;
+    }
+
+    await deleteProject(id);
+    logger.info({ projectId: id, projectName: project.name }, "Project deleted");
+
+    if (req.headers["hx-request"]) {
+      res.set("HX-Redirect", "/");
+      res.sendStatus(200);
+      return;
+    }
+
+    res.redirect("/");
+  } catch (err) {
+    logger.error({ err }, "Failed to delete project");
+    res.status(500).send("Failed to delete project");
+  }
 });
 
 // ---------------------------------------------------------------------------
