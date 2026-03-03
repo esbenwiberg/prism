@@ -32,7 +32,8 @@ const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /**
- * Try to derive an owner/repo slug from the git remote origin URL.
+ * Try to derive an org/repo slug from the git remote origin URL.
+ * Handles GitHub (org/repo) and Azure DevOps (org/project/_git/repo → org/repo).
  */
 function deriveSlugFromGitRemote(projectPath: string): string | undefined {
   try {
@@ -41,6 +42,8 @@ function deriveSlugFromGitRemote(projectPath: string): string | undefined {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
+    const adoMatch = remoteUrl.match(/dev\.azure\.com\/([^/]+)\/[^/]+\/_git\/([^/.]+?)(?:\.git)?$/);
+    if (adoMatch) return `${adoMatch[1]}/${adoMatch[2]}`;
     const match = remoteUrl.match(/[/:]([^/:]+\/[^/.]+?)(?:\.git)?$/);
     return match?.[1] ?? undefined;
   } catch {
