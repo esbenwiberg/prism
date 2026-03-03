@@ -91,6 +91,7 @@ export function projectPage(data: ProjectPageData): string {
 
   const details = `
 <div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-6 space-y-2 text-sm">
+  ${project.slug ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Slug:</span> <code class="font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded">${escapeHtml(project.slug)}</code></p>` : ""}
   <p class="text-slate-300"><span class="font-medium text-slate-400">Path:</span> <span class="font-mono text-xs">${escapeHtml(project.path)}</span></p>
   ${project.gitUrl ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Git URL:</span> <span class="font-mono text-xs">${escapeHtml(project.gitUrl)}</span></p>` : ""}
   <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>
@@ -135,6 +136,7 @@ export function projectFragment(data: ProjectPageData): string {
 
   const details = `
 <div class="rounded-xl border border-slate-700 bg-slate-800 p-6 mb-6 space-y-2 text-sm">
+  ${project.slug ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Slug:</span> <code class="font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded">${escapeHtml(project.slug)}</code></p>` : ""}
   <p class="text-slate-300"><span class="font-medium text-slate-400">Path:</span> <span class="font-mono text-xs">${escapeHtml(project.path)}</span></p>
   ${project.gitUrl ? `<p class="text-slate-300"><span class="font-medium text-slate-400">Git URL:</span> <span class="font-mono text-xs">${escapeHtml(project.gitUrl)}</span></p>` : ""}
   <p class="text-slate-300"><span class="font-medium text-slate-400">Language:</span> ${escapeHtml(project.language ?? "Unknown")}</p>

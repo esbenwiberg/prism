@@ -25,6 +25,10 @@ export function overviewPage(
         `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300 font-medium">${escapeHtml(p.name)}</a>`,
     },
     {
+      header: "Slug",
+      render: (p) => p.slug ? `<code class="font-mono text-xs text-slate-400">${escapeHtml(p.slug)}</code>` : `<span class="text-slate-600">—</span>`,
+    },
+    {
       header: "Path",
       render: (p) => `<span class="font-mono text-xs text-slate-400">${escapeHtml(p.path)}</span>`,
     },
@@ -96,8 +100,8 @@ export function overviewFragment(projects: Project[]): string {
         `<a href="/projects/${p.id}" hx-get="/projects/${p.id}" hx-target="#main-content" hx-push-url="true" class="text-purple-400 hover:text-purple-300 font-medium">${escapeHtml(p.name)}</a>`,
     },
     {
-      header: "Path",
-      render: (p) => `<span class="font-mono text-xs text-slate-400">${escapeHtml(p.path)}</span>`,
+      header: "Slug",
+      render: (p) => p.slug ? `<code class="font-mono text-xs text-slate-400">${escapeHtml(p.slug)}</code>` : `<span class="text-slate-600">—</span>`,
     },
     {
       header: "Status",
