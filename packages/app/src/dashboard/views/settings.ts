@@ -4,7 +4,7 @@ import { layout } from "./layout.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type SettingsTab = "analysis" | "indexer" | "apikeys";
+export type SettingsTab = "analysis" | "indexer" | "apikeys" | "dashboard";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ function settingsTabs(active: SettingsTab): string {
   ${tabButton("Analysis", "analysis", active)}
   ${tabButton("Indexer", "indexer", active)}
   ${tabButton("API Keys", "apikeys", active)}
+  ${tabButton("Dashboard", "dashboard", active)}
 </div>`;
 }
 
@@ -226,6 +227,35 @@ export function apiKeysTabPartial(config: PrismConfig): string {
 </form>`;
 }
 
+// ── Dashboard Tab ────────────────────────────────────────────────────────────
+
+export function dashboardTabPartial(config: PrismConfig): string {
+  const corsOrigins = config.dashboard.corsOrigins.join("\n");
+
+  return `<form hx-post="/settings/dashboard" hx-target="#settings-content" hx-swap="innerHTML">
+  <div class="space-y-6">
+    <p class="text-sm text-slate-400">Configure dashboard behaviour and cross-origin access for the API.</p>
+
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      ${card("CORS", `
+        <div class="space-y-3">
+          ${textarea("dashboard_corsOrigins", "Allowed Origins (one per line)", {
+            value: corsOrigins,
+            rows: 6,
+            placeholder: "https://example.com\nhttps://app.example.com\n\nUse * to allow all origins",
+          })}
+          <p class="text-xs text-slate-500">Origins that are allowed to call the Prism API from a browser. Leave empty to block all cross-origin requests.</p>
+        </div>
+      `)}
+    </div>
+
+    <div class="flex justify-end">
+      ${button("Save Dashboard Settings", { variant: "primary", attrs: 'type="submit"' })}
+    </div>
+  </div>
+</form>`;
+}
+
 // ── Full Page ────────────────────────────────────────────────────────────────
 
 export function settingsPage(
@@ -238,7 +268,9 @@ export function settingsPage(
       ? apiKeysTabPartial(config)
       : activeTab === "indexer"
         ? indexerTabPartial(config)
-        : analysisTabPartial(config);
+        : activeTab === "dashboard"
+          ? dashboardTabPartial(config)
+          : analysisTabPartial(config);
 
   const content = `<div class="space-y-8">
   <div>

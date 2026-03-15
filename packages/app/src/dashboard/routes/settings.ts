@@ -8,11 +8,12 @@ import {
   analysisTabPartial,
   indexerTabPartial,
   apiKeysTabPartial,
+  dashboardTabPartial,
 } from "../views/settings.js";
 
 const router = Router();
 
-const VALID_TABS = new Set<SettingsTab>(["analysis", "indexer", "apikeys"]);
+const VALID_TABS = new Set<SettingsTab>(["analysis", "indexer", "apikeys", "dashboard"]);
 
 function isValidTab(value: unknown): value is SettingsTab {
   return typeof value === "string" && VALID_TABS.has(value as SettingsTab);
@@ -47,7 +48,9 @@ router.get("/settings/tab", async (req: Request, res: Response, next: NextFuncti
         ? apiKeysTabPartial(config)
         : tab === "indexer"
           ? indexerTabPartial(config)
-          : analysisTabPartial(config);
+          : tab === "dashboard"
+            ? dashboardTabPartial(config)
+            : analysisTabPartial(config);
     res.send(settingsPanel(tab, tabContent));
   } catch (err) {
     next(err);
@@ -171,6 +174,41 @@ router.post("/settings/indexer", async (req: Request, res: Response, next: NextF
       JSON.stringify({ showToast: { message: "Indexer settings saved", type: "success" } }),
     );
     res.send(indexerTabPartial(updatedConfig));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /settings/dashboard ─ Save dashboard settings ───────────────────────
+
+router.post("/settings/dashboard", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as Record<string, string>;
+    const corsOriginsRaw = body.dashboard_corsOrigins ?? "";
+
+    const corsOrigins = corsOriginsRaw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    // Basic validation: each origin should be a URL or "*"
+    const invalid = corsOrigins.filter(
+      (o) => o !== "*" && !o.startsWith("http://") && !o.startsWith("https://"),
+    );
+    if (invalid.length > 0) {
+      res.status(400).send(`Invalid origin(s): ${invalid.join(", ")} — must start with http:// or https://, or use *`);
+      return;
+    }
+
+    const updatedConfig = await saveConfig({
+      dashboard: { corsOrigins },
+    });
+
+    res.setHeader(
+      "HX-Trigger",
+      JSON.stringify({ showToast: { message: "Dashboard settings saved", type: "success" } }),
+    );
+    res.send(dashboardTabPartial(updatedConfig));
   } catch (err) {
     next(err);
   }

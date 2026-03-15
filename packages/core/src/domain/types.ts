@@ -114,6 +114,7 @@ export interface IndexerConfig {
 
 export interface DashboardConfig {
   port: number;
+  corsOrigins: string[];
 }
 
 export interface ApiKeysConfig {
