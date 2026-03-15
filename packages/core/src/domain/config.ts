@@ -66,6 +66,7 @@ const DEFAULT_CONFIG: PrismConfig = {
   },
   dashboard: {
     port: 3100,
+    corsOrigins: [],
   },
   apiKeys: {
     anthropicApiKey: "",
@@ -224,6 +225,12 @@ function applyEnvOverrides(config: PrismConfig): PrismConfig {
       envVar: "PRISM_STRUCTURAL_MAX_FILE_SIZE_BYTES",
       apply: (cfg, v) => {
         cfg.structural.maxFileSizeBytes = parseInt(v, 10);
+      },
+    },
+    {
+      envVar: "PRISM_CORS_ORIGINS",
+      apply: (cfg, v) => {
+        cfg.dashboard.corsOrigins = v.split(",").map((s) => s.trim()).filter(Boolean);
       },
     },
   ];

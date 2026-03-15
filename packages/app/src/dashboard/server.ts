@@ -7,7 +7,9 @@
 
 import { join } from "node:path";
 import express from "express";
-import { logger } from "@prism/core";
+import type { Request, Response, NextFunction } from "express";
+import cors from "cors";
+import { getConfig, logger } from "@prism/core";
 import { createSessionMiddleware } from "../auth/session.js";
 import { requireAuth } from "../auth/middleware.js";
 import { getAuthUrl, handleCallback } from "../auth/entra.js";
@@ -58,6 +60,44 @@ export function createApp(): express.Express {
 
   // JSON body parsing for API routes
   app.use(express.json());
+
+  // CORS — allow configured origins for API routes.
+  // When no origins are configured, CORS is disabled (same-origin only).
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        let allowed: string[];
+        try {
+          allowed = getConfig().dashboard.corsOrigins;
+        } catch {
+          allowed = [];
+        }
+
+        // No origins configured → block cross-origin requests
+        if (allowed.length === 0) {
+          callback(null, false);
+          return;
+        }
+
+        // Wildcard allows everything
+        if (allowed.includes("*")) {
+          callback(null, true);
+          return;
+        }
+
+        // Allow requests with no origin (server-to-server, curl, etc.)
+        if (!origin || allowed.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(null, false);
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  );
 
   // Static files (htmx-ext.js etc.)
   // __dirname is available in CJS output; points to the compiled dist directory.
@@ -146,6 +186,21 @@ export function createApp(): express.Express {
   app.use(reindexRunsRouter);
   app.use(apiKeysRouter);
   app.use(getStartedRouter);
+
+  // ---------------------------------------------------------------------------
+  // Global error handler — catch-all for unhandled route errors
+  // ---------------------------------------------------------------------------
+
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    logger.error({ err, method: req.method, url: req.url }, "Unhandled route error");
+
+    // Return JSON for API/MCP routes, HTML for dashboard routes
+    if (req.path.startsWith("/api/") || req.path === "/mcp") {
+      res.status(500).json({ error: "Internal server error" });
+    } else {
+      res.status(500).send("Internal server error");
+    }
+  });
 
   return app;
 }
