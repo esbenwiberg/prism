@@ -109,6 +109,129 @@ async function bfs(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Aggregated blast radius
+// ---------------------------------------------------------------------------
+
+export interface AggregatedBlastRadiusOptions {
+  projectId: number;
+  /** The task-relevant file IDs (the ones being changed) */
+  sourceFileIds: number[];
+  /** Max BFS depth per file (default 1 — direct dependents only) */
+  maxDepth?: number;
+  /** Cap total results (default 25) */
+  maxResults?: number;
+}
+
+/**
+ * Aggregated blast radius across multiple source files.
+ *
+ * For each source file, collects reverse dependencies (who imports it),
+ * then merges, deduplicates, and ranks by how many source files each
+ * dependent touches. Excludes the source files themselves.
+ */
+export async function collectAggregatedBlastRadius(
+  options: AggregatedBlastRadiusOptions,
+): Promise<SignalResult> {
+  const { projectId, sourceFileIds, maxDepth = 1, maxResults = 25 } = options;
+
+  if (sourceFileIds.length === 0) {
+    return { heading: "Blast Radius", priority: 3, items: [] };
+  }
+
+  const sourceSet = new Set(sourceFileIds);
+
+  const allFiles = await getProjectFiles(projectId);
+  const fileMap = new Map<number, FileRow>(allFiles.map((f) => [f.id, f]));
+
+  // Parallel BFS reverse deps for all source files
+  const allReverseDeps = await Promise.all(
+    sourceFileIds.map((id) => bfsCollectIds(id, maxDepth, "reverse")),
+  );
+
+  // Map<dependentFileId, Set<sourceFileId it depends on>>
+  const dependentOverlap = new Map<number, Set<number>>();
+
+  for (let i = 0; i < sourceFileIds.length; i++) {
+    const sourceId = sourceFileIds[i];
+    for (const depId of allReverseDeps[i]) {
+      if (sourceSet.has(depId)) continue;
+      if (!dependentOverlap.has(depId)) {
+        dependentOverlap.set(depId, new Set());
+      }
+      dependentOverlap.get(depId)!.add(sourceId);
+    }
+  }
+
+  // Rank by overlap count descending, then alphabetical
+  const ranked = [...dependentOverlap.entries()]
+    .map(([depId, sources]) => ({ depId, sources, overlapCount: sources.size }))
+    .sort(
+      (a, b) =>
+        b.overlapCount - a.overlapCount ||
+        (fileMap.get(a.depId)?.path ?? "").localeCompare(
+          fileMap.get(b.depId)?.path ?? "",
+        ),
+    )
+    .slice(0, maxResults);
+
+  const items: SignalItem[] = ranked.map(({ depId, sources, overlapCount }) => {
+    const depPath = fileMap.get(depId)?.path ?? `file#${depId}`;
+    const sourceNames = [...sources]
+      .map((id) => fileMap.get(id)?.path?.split("/").pop() ?? `file#${id}`)
+      .join(", ");
+
+    return {
+      content: `**${depPath}** (depends on ${sourceNames})`,
+      relevance: Math.min(1, overlapCount / sourceFileIds.length + 0.3),
+    };
+  });
+
+  return {
+    heading: `Blast Radius (${items.length} files potentially affected)`,
+    priority: 3,
+    items,
+  };
+}
+
+async function bfsCollectIds(
+  startFileId: number,
+  maxDepth: number,
+  direction: "forward" | "reverse",
+): Promise<number[]> {
+  const visited = new Set<number>([startFileId]);
+  const queue: Array<{ fileId: number; depth: number }> = [
+    { fileId: startFileId, depth: 0 },
+  ];
+  const results: number[] = [];
+
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    if (node.depth > maxDepth) continue;
+    if (node.depth > 0) results.push(node.fileId);
+    if (node.depth >= maxDepth) continue;
+
+    const edges =
+      direction === "forward"
+        ? await getDependenciesBySourceFileId(node.fileId)
+        : await getDependenciesByTargetFileId(node.fileId);
+
+    for (const edge of edges) {
+      const nextId =
+        direction === "forward" ? edge.targetFileId : edge.sourceFileId;
+      if (nextId == null || visited.has(nextId)) continue;
+      visited.add(nextId);
+      queue.push({ fileId: nextId, depth: node.depth + 1 });
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Related file IDs (bidirectional BFS)
+// ---------------------------------------------------------------------------
+
 /**
  * Get file IDs reachable from a starting file via BFS (both directions).
  * Useful for merging with semantic results.

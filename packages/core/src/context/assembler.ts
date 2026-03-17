@@ -23,7 +23,11 @@ import {
   collectArchitectureSummaries,
   collectFileSummariesBatch,
 } from "./signals/summaries.js";
-import { collectGraphSignal, getRelatedFileIds } from "./signals/graph.js";
+import {
+  collectGraphSignal,
+  collectAggregatedBlastRadius,
+  getRelatedFileIds,
+} from "./signals/graph.js";
 import {
   collectFindingsByFilePath,
   collectFindingsByModulePath,
@@ -631,16 +635,15 @@ export async function assembleTaskContext(
     .map((p) => fileByPath.get(p))
     .filter((f): f is FileRow => f != null);
 
-  // Use top 3 files for blast radius (highest-ranked only)
-  const top3Files = topFilePaths.slice(0, 3);
-  const top3FileIds = topFileIds.slice(0, 3);
-
   // 4. Fan-out: collect signals in parallel
-  const [archSummaries, recentProjectCommits, ...graphResults] =
+  const [archSummaries, recentProjectCommits, blastRadius] =
     await Promise.all([
       collectArchitectureSummaries(projectId),
       getRecentCommitsByProjectId(projectId, 10),
-      ...top3FileIds.map((f) => collectGraphSignal({ projectId, fileId: f.id })),
+      collectAggregatedBlastRadius({
+        projectId,
+        sourceFileIds: topFileIds.map((f) => f.id),
+      }),
     ]);
 
   // Collect commits for each of the top found files (scoped history)
@@ -685,17 +688,9 @@ export async function assembleTaskContext(
     priority: 2,
   });
 
-  // Priority 3: Blast radius for top-ranked files (reverse deps only — who depends on these)
-  for (let i = 0; i < graphResults.length; i++) {
-    const graph = graphResults[i] as { forward: SignalResult; reverse: SignalResult };
-    const filePath = top3Files[i];
-    if (graph.reverse.items.length > 0) {
-      signals.push({
-        ...graph.reverse,
-        heading: `Blast Radius — ${filePath}`,
-        priority: 3,
-      });
-    }
+  // Priority 3: Aggregated blast radius (reverse deps across all relevant files)
+  if (blastRadius.items.length > 0) {
+    signals.push(blastRadius);
   }
 
   // Priority 3: Commits touching the found files (scoped history)
