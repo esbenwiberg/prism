@@ -25,18 +25,21 @@ export interface SemanticSignalOptions extends RankOptions {
   limit?: number;
   heading?: string;
   priority?: number;
-  /** Minimum similarity score (0-1) to include a vector result. Default: 0.25 */
+  /** Minimum similarity score (0-1) to include a vector result. Default: 0.35 */
   minScore?: number;
 }
 
 /**
  * Run semantic similarity search and return ranked signal items.
  *
- * After vector search, augments results with keyword-matched files
- * whose paths contain highly specific query terms (terms that match
- * only a few files). This ensures files like "StartDelegation.cs"
- * surface when the query mentions "delegation", without flooding
- * results for generic terms like "service" or "resource".
+ * After vector search, augments results with keyword-matched files:
+ * - Files already in vector results get a relevance BOOST if their
+ *   filename matches specific query terms
+ * - Files NOT in vector results get added as new items
+ *
+ * Uses inverse-frequency filtering so generic terms like "service"
+ * (matching 100+ files) are ignored while specific terms like
+ * "delegation" (matching 2 files) surface with high confidence.
  */
 export async function collectSemanticSignal(
   options: SemanticSignalOptions,
@@ -47,7 +50,7 @@ export async function collectSemanticSignal(
     limit = 15,
     heading = "Semantically Related",
     priority = 4,
-    minScore = 0.25,
+    minScore = 0.35,
   } = options;
 
   const config = getConfig();
@@ -65,8 +68,23 @@ export async function collectSemanticSignal(
   // diluting the signal when the vector search can't find good matches
   results = results.filter((r) => r.score >= minScore);
 
+  // Find keyword matches across ALL project files (including those already
+  // in vector results — those get boosted, not skipped)
+  const keywordData = await findKeywordMatches(projectId, query);
+
+  // Build items from vector results, boosting those that also match keywords
   const items: SignalItem[] = results.map((r) => {
-    const relevance = computeRelevance(r.score, r.filePath, options);
+    let relevance = computeRelevance(r.score, r.filePath, options);
+
+    // Boost vector results whose filename matches specific query terms
+    if (r.filePath) {
+      const kwMatch = keywordData.matchedPaths.get(r.filePath);
+      if (kwMatch) {
+        const boost = 0.3 + 0.1 * kwMatch.matchedWords.length;
+        relevance = Math.min(1, relevance + boost);
+      }
+    }
+
     const label = r.filePath
       ? `**${r.filePath}**${r.symbolName ? ` — \`${r.symbolName}\`` : ""} (${r.level})`
       : `**${r.targetId}** (${r.level})`;
@@ -74,23 +92,26 @@ export async function collectSemanticSignal(
     return { content, relevance };
   });
 
-  // Augment with keyword-matched files that the vector search missed
-  const keywordItems = await collectKeywordMatches(
+  // Add keyword-only matches (files not in vector results)
+  const existingPaths = new Set(
+    results.map((r) => r.filePath).filter((p): p is string => p != null),
+  );
+  const newKeywordItems = await buildKeywordItems(
     projectId,
-    query,
-    results,
+    keywordData,
+    existingPaths,
     options,
   );
-  items.push(...keywordItems);
+  items.push(...newKeywordItems);
 
-  // Re-sort by relevance after merging
+  // Re-sort by relevance after merging and boosting
   items.sort((a, b) => b.relevance - a.relevance);
 
   return { heading, priority, items };
 }
 
 // ---------------------------------------------------------------------------
-// Keyword augmentation
+// Keyword matching
 // ---------------------------------------------------------------------------
 
 /** Words too common to be useful for file path matching. */
@@ -119,38 +140,30 @@ const MIN_WORD_LENGTH = 4;
  */
 const MAX_PATH_HITS = 15;
 
+interface KeywordMatchData {
+  /** path → { fileId, matchedWords } for ALL matching files (including vector results) */
+  matchedPaths: Map<string, { fileId: number; matchedWords: string[] }>;
+}
+
 /**
- * Find files whose paths contain specific query terms that the vector
- * search missed. Uses inverse-frequency filtering: only terms matching
- * a small number of files are considered.
+ * Find all files whose filenames contain specific query terms.
+ * Returns matches for ALL files — the caller decides which are new
+ * vs. which should boost existing vector results.
  */
-async function collectKeywordMatches(
+async function findKeywordMatches(
   projectId: number,
   query: string,
-  existingResults: SimilaritySearchResult[],
-  rankOptions: RankOptions,
-): Promise<SignalItem[]> {
-  // Extract candidate words from the query
+): Promise<KeywordMatchData> {
   const words = extractDiscriminatingWords(query);
-  if (words.length === 0) return [];
+  const matchedPaths = new Map<string, { fileId: number; matchedWords: string[] }>();
+
+  if (words.length === 0) return { matchedPaths };
 
   const allFiles = await getProjectFiles(projectId);
-
-  // Already-found file paths from vector search
-  const existingPaths = new Set(
-    existingResults
-      .map((r) => r.filePath)
-      .filter((p): p is string => p != null),
-  );
-
-  // For each word, find matching file paths and check specificity
-  const matchedFileIds = new Map<number, { path: string; matchedWords: string[] }>();
 
   for (const word of words) {
     const wordLower = word.toLowerCase();
     const hits = allFiles.filter((f) => {
-      // Match against the filename (last path segment), not the full path.
-      // This avoids matching directory names like "services/" for the word "service".
       const filename = f.path.split("/").pop()?.toLowerCase() ?? "";
       return filename.includes(wordLower);
     });
@@ -159,29 +172,40 @@ async function collectKeywordMatches(
     if (hits.length === 0 || hits.length > MAX_PATH_HITS) continue;
 
     for (const file of hits) {
-      if (existingPaths.has(file.path)) continue; // Already in vector results
-
-      const existing = matchedFileIds.get(file.id);
+      const existing = matchedPaths.get(file.path);
       if (existing) {
         existing.matchedWords.push(word);
       } else {
-        matchedFileIds.set(file.id, { path: file.path, matchedWords: [word] });
+        matchedPaths.set(file.path, { fileId: file.id, matchedWords: [word] });
       }
     }
   }
 
-  if (matchedFileIds.size === 0) return [];
+  return { matchedPaths };
+}
 
-  // Fetch summaries and symbols for matched files, build signal items
+/**
+ * Build signal items for keyword matches that are NOT already in
+ * vector results. Fetches summaries and symbols for context.
+ */
+async function buildKeywordItems(
+  projectId: number,
+  keywordData: KeywordMatchData,
+  existingPaths: Set<string>,
+  rankOptions: RankOptions,
+): Promise<SignalItem[]> {
   const items: SignalItem[] = [];
+  const newMatches = [...keywordData.matchedPaths.entries()].filter(
+    ([path]) => !existingPaths.has(path),
+  );
 
-  const fetches = [...matchedFileIds.entries()].map(
-    async ([fileId, { path, matchedWords }]) => {
-      // Try to get a file-level summary
+  if (newMatches.length === 0) return items;
+
+  const fetches = newMatches.map(
+    async ([path, { fileId, matchedWords }]) => {
       const summary = await getSummaryByTargetId(projectId, `file:${path}`);
       const symbols = await getExportedSymbolsByFileId(fileId);
 
-      // Build a label similar to vector search results
       const topSymbol = symbols[0];
       const label = topSymbol
         ? `**${path}** — \`${topSymbol.name}\` (${topSymbol.kind})`
@@ -196,8 +220,8 @@ async function collectKeywordMatches(
         ? `${label}\n${summaryText}`
         : label;
 
-      // Score: more matched words = higher relevance
-      const baseRelevance = Math.min(1, 0.6 + 0.15 * matchedWords.length);
+      // High base relevance — filename match is strong signal
+      const baseRelevance = Math.min(1, 0.7 + 0.1 * matchedWords.length);
       const relevance = computeRelevance(baseRelevance, path, rankOptions);
 
       items.push({ content, relevance });
