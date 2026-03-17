@@ -186,11 +186,33 @@ export async function runHistoryLayer(
 // Git log execution
 // ---------------------------------------------------------------------------
 
+async function unshallowIfNeeded(projectPath: string): Promise<void> {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: projectPath,
+    });
+    if (stdout.trim() === "true") {
+      logger.info({ projectPath }, "Unshallowing clone for history layer");
+      await execFileAsync("git", ["fetch", "--unshallow"], {
+        cwd: projectPath,
+        timeout: 300_000, // 5 min
+      });
+    }
+  } catch (err) {
+    logger.warn(
+      { projectPath, error: err instanceof Error ? err.message : String(err) },
+      "Failed to unshallow clone — history may be incomplete",
+    );
+  }
+}
+
 async function getGitLog(
   projectPath: string,
   maxCommits: number,
 ): Promise<string> {
   try {
+    await unshallowIfNeeded(projectPath);
+
     const { stdout } = await execFileAsync(
       "git",
       [
