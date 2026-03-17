@@ -621,31 +621,27 @@ export async function assembleTaskContext(
     intent: query,
   });
 
-  // 2. Extract top file paths from semantic results
+  // 2. Extract top file paths for scoped commit history
   const topFilePaths = extractTopFilePaths(semanticSignal, 5);
 
-  // 3. Resolve file IDs for graph signals (top 3)
+  // 3. Resolve file IDs for commit lookups
   const allFiles = await getProjectFiles(projectId);
   const fileByPath = new Map(allFiles.map((f) => [f.path, f]));
-  const top3Files = topFilePaths.slice(0, 3);
-  const top3FileIds = top3Files
+  const topFileIds = topFilePaths
     .map((p) => fileByPath.get(p))
     .filter((f): f is FileRow => f != null);
 
-  // 4. Fan-out: collect signals in parallel (no findings — too generic for task context)
-  const [archSummaries, fileSummaryMap, recentProjectCommits, ...graphResults] =
-    await Promise.all([
-      collectArchitectureSummaries(projectId),
-      collectFileSummariesBatch(projectId, topFilePaths),
-      getRecentCommitsByProjectId(projectId, 10),
-      ...top3FileIds.map((f) => collectGraphSignal({ projectId, fileId: f.id })),
-    ]);
+  // 4. Fan-out: collect signals in parallel
+  const [archSummaries, recentProjectCommits] = await Promise.all([
+    collectArchitectureSummaries(projectId),
+    getRecentCommitsByProjectId(projectId, 10),
+  ]);
 
   // Collect commits for each of the top found files (scoped history)
   let fileCommits: CommitRow[] = [];
   try {
     const perFileCommits = await Promise.all(
-      top3FileIds.map((f) => getRecentCommitsByFileId(f.id, 10)),
+      topFileIds.map((f) => getRecentCommitsByFileId(f.id, 10)),
     );
     // Merge and deduplicate by sha, sort by date descending
     const seen = new Set<string>();
@@ -676,46 +672,12 @@ export async function assembleTaskContext(
     { ...archSummaries.system, priority: 1 },
   );
 
-  // Priority 2: Semantic search results
+  // Priority 2: Semantic search results (includes keyword-augmented files)
   signals.push({
     ...semanticSignal,
     heading: "Relevant Code",
     priority: 2,
   });
-
-  // Priority 2: File summaries for top hits
-  if (fileSummaryMap.size > 0) {
-    signals.push({
-      heading: "File Summaries",
-      priority: 2,
-      items: topFilePaths
-        .filter((p) => fileSummaryMap.has(p))
-        .map((p) => ({
-          content: `**${p}**\n${fileSummaryMap.get(p)}`,
-          relevance: 0.8,
-        })),
-    });
-  }
-
-  // Priority 3: Blast radius + dependencies (top 3 files)
-  for (let i = 0; i < graphResults.length; i++) {
-    const graph = graphResults[i] as { forward: SignalResult; reverse: SignalResult };
-    const filePath = top3Files[i];
-    if (graph.reverse.items.length > 0) {
-      signals.push({
-        ...graph.reverse,
-        heading: `Blast Radius — ${filePath}`,
-        priority: 3,
-      });
-    }
-    if (graph.forward.items.length > 0) {
-      signals.push({
-        ...graph.forward,
-        heading: `Dependencies — ${filePath}`,
-        priority: 3,
-      });
-    }
-  }
 
   // Priority 3: Commits touching the found files (scoped history)
   if (fileCommits.length > 0) {
