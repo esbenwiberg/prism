@@ -292,6 +292,10 @@ const PROJECT_TABS = [
   // Analysis layer
   { key: "modules", label: "Modules" },
   { key: "findings", label: "Findings" },
+  // History layer
+  { key: "history", label: "History" },
+  // Context enricher
+  { key: "context", label: "Context" },
   // Blueprint layer
   { key: "blueprints", label: "Blueprints" },
 ] as const;

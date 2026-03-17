@@ -36,6 +36,8 @@ import { apiRouter } from "./routes/api.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 import { getStartedRouter } from "./routes/get-started.js";
+import { historyRouter } from "./routes/history.js";
+import { contextExplorerRouter } from "./routes/context-explorer.js";
 
 /**
  * Create and configure the Express application.
@@ -185,6 +187,8 @@ export function createApp(): express.Express {
   app.use(pipelineRouter);
   app.use(reindexRunsRouter);
   app.use(apiKeysRouter);
+  app.use(historyRouter);
+  app.use(contextExplorerRouter);
   app.use(getStartedRouter);
 
   // ---------------------------------------------------------------------------

@@ -25,13 +25,14 @@ export interface JobProgressData {
 // Constants
 // ---------------------------------------------------------------------------
 
-const INDEX_LAYER_ORDER = ["structural", "docs", "semantic", "analysis", "blueprint"] as const;
+const INDEX_LAYER_ORDER = ["structural", "docs", "semantic", "analysis", "history", "blueprint"] as const;
 
 const LAYER_LABELS: Record<string, string> = {
   structural: "Structural",
   docs: "Docs",
   semantic: "Semantic",
   analysis: "Analysis",
+  history: "History",
   blueprint: "Blueprint",
 };
 

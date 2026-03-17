@@ -123,3 +123,15 @@ export {
 } from "./api-keys.js";
 
 export { getStartedPage } from "./get-started.js";
+
+export {
+  historyPage,
+  historyFragment,
+  type HistoryPageData,
+} from "./history.js";
+
+export {
+  contextExplorerPage,
+  contextExplorerFragment,
+  type ContextExplorerPageData,
+} from "./context-explorer.js";
