@@ -38,6 +38,7 @@ const LAYER_LABELS: Record<string, string> = {
 
 /** For blueprint jobs, "files processed" means phases completed. */
 const LAYER_UNIT: Record<string, string> = {
+  history: "commits",
   blueprint: "phases",
 };
 

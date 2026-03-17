@@ -1474,7 +1474,7 @@ async function executeHistoryLayer(
     });
 
     const durationMs = Date.now() - startTime;
-    await completeIndexRun(indexRun.id, commitsProcessed, 0, durationMs);
+    await completeIndexRun(indexRun.id, commitsProcessed, durationMs, undefined, commitsProcessed);
 
     return {
       layer: "history",

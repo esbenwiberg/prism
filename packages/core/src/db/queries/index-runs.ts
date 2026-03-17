@@ -68,18 +68,23 @@ export async function completeIndexRun(
   filesProcessed: number,
   durationMs: number,
   costUsd?: number,
+  filesTotal?: number,
 ): Promise<IndexRunRow> {
   const db = getDb();
+  const values: Record<string, unknown> = {
+    status: "completed" satisfies IndexStatus,
+    filesProcessed,
+    durationMs,
+    costUsd: costUsd != null ? costUsd.toFixed(4) : null,
+    completedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  if (filesTotal != null) {
+    values.filesTotal = filesTotal;
+  }
   const [row] = await db
     .update(indexRuns)
-    .set({
-      status: "completed" satisfies IndexStatus,
-      filesProcessed,
-      durationMs,
-      costUsd: costUsd != null ? costUsd.toFixed(4) : null,
-      completedAt: new Date(),
-      updatedAt: new Date(),
-    })
+    .set(values)
     .where(eq(indexRuns.id, runId))
     .returning();
   return row;
