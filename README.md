@@ -2,12 +2,13 @@
 
 **Deep codebase analysis and redesign tool.** Index once, query cheaply many times.
 
-Prism indexes any codebase through a five-layer pipeline — structural parsing, documentation extraction, LLM-powered semantic understanding, architectural analysis, and redesign blueprint generation — then serves the results through a CLI and an interactive dashboard.
+Prism indexes any codebase through a multi-layer pipeline — structural parsing, documentation extraction, LLM-powered semantic understanding, git history analysis, architectural pattern detection, and redesign blueprint generation — then serves the results through a CLI, an interactive dashboard, a REST API, and an MCP server for AI agent integration.
 
 ```
 prism init ~/my-project
 prism index my-project --layer structural
 prism index my-project --layer semantic
+prism index my-project --layer history
 prism analyze my-project
 prism blueprint my-project --goal "Productionize this PoC for enterprise deployment"
 prism serve
@@ -23,6 +24,7 @@ prism serve
 | **Productionize a PoC** | Analyze a prototype, produce blueprints for a production-grade rebuild |
 | **Architectural audit** | Detect circular dependencies, god modules, dead code, coupling issues, doc gaps |
 | **Onboard onto a codebase** | Semantic search + hierarchical summaries for fast understanding |
+| **Power AI coding agents** | MCP server + context enricher gives agents token-budget-aware, multi-signal codebase context |
 
 ---
 
@@ -37,7 +39,12 @@ prism serve
 │  │commander │  │ Express+HTMX │  │    Claude Sonnet       │  │
 │  └────┬─────┘  └──────┬───────┘  └───────────┬────────────┘  │
 │       │               │                      │               │
-├───────┼───────────────┼──────────────────────┼───────────────┤
+│       │          ┌────┴─────┐  ┌──────────┐  │               │
+│       │          │ REST API │  │MCP Server│  │               │
+│       │          │ /api/*   │  │ /mcp     │  │               │
+│       │          └────┬─────┘  └────┬─────┘  │               │
+│       │               │             │        │               │
+├───────┼───────────────┼─────────────┼────────┼───────────────┤
 │  @prism/core                                                 │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -49,12 +56,18 @@ prism serve
 │  │  parsing      configs     summaries     pattern        │  │
 │  │  symbols      comments    embeddings    detection      │  │
 │  │  deps graph   intent      pgvector                     │  │
+│  │                                                        │  │
+│  │  History Layer          Context Enricher               │  │
+│  │  git log parsing        multi-signal assembly          │  │
+│  │  co-change patterns     token-budget-aware             │  │
+│  │  change frequency       ranked context for agents      │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              │                               │
 │  ┌───────────────────────────┴────────────────────────────┐  │
 │  │           Database (Drizzle ORM)                       │  │
-│  │  9 tables: projects, files, symbols, dependencies,     │  │
-│  │  summaries, embeddings, findings, blueprints, runs     │  │
+│  │  13 tables: projects, files, symbols, dependencies,    │  │
+│  │  summaries, embeddings, findings, blueprints, runs,    │  │
+│  │  commits, commit_files, api_keys, reindex_requests     │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 └──────────────────────────────┼───────────────────────────────┘
                                │
@@ -78,17 +91,29 @@ prism serve
   │ files   │     │             │     │              │     │              │     │           │
   └─────────┘     └─────────────┘     └──────────────┘     └──────────────┘     └─────┬─────┘
                                                                                       │
-                                                                                      ▼
-                  ┌──────────────┐     ┌──────────────┐                         ┌───────────┐
-                  │  Dashboard   │◄────│   search     │                         │  Layer 5  │
-                  │              │     │              │                         │ Blueprint │
-                  │ overview     │     │ embed query  │                         │           │
-                  │ file browser │     │ cosine sim   │                         │ Claude    │
-                  │ findings     │     │ ranked       │                         │ Sonnet    │
-                  │ blueprints   │     │ results      │                         │ redesign  │
-                  │ dep graph    │     │              │                         │ proposals │
-                  │ modules      │     │              │                         │           │
-                  └──────────────┘     └──────────────┘                         └───────────┘
+                         ┌──────────────┐                                             ▼
+                         │   History    │                                       ┌───────────┐
+                         │              │     ┌──────────────┐                  │  Layer 5  │
+                         │ git log      │     │   Context    │                  │ Blueprint │
+                         │ co-changes   │     │  Enricher    │                  │           │
+                         │ hotspots     │     │              │                  │ Claude    │
+                         │              │     │ multi-signal │                  │ Sonnet    │
+                         └──────┬───────┘     │ budget-aware │                  │ redesign  │
+                                │             │ ranked       │                  │ proposals │
+                                ▼             └──────┬───────┘                  └───────────┘
+                  ┌──────────────┐                   │
+                  │  Dashboard   │◄──────────────────┤
+                  │  REST API    │     ┌──────────────┘
+                  │  MCP Server  │     │
+                  │              │     ▼
+                  │ overview     │  ┌──────────────┐
+                  │ file browser │  │   search     │
+                  │ findings     │  │              │
+                  │ blueprints   │  │ embed query  │
+                  │ dep graph    │  │ cosine sim   │
+                  │ modules      │  │ ranked       │
+                  │              │  │ results      │
+                  └──────────────┘  └──────────────┘
 ```
 
 ### Incremental Re-Indexing
@@ -121,14 +146,16 @@ Prism tracks every file by SHA-256 content hash and every project by its last in
 | Database | PostgreSQL + pgvector |
 | ORM | Drizzle ORM |
 | Code Parsing | tree-sitter (WASM) — TS/JS, Python, C# |
-| LLM Summaries | Claude Haiku via Anthropic SDK |
-| LLM Analysis | Claude Sonnet via Anthropic SDK |
-| Embeddings | Voyage AI or OpenAI (configurable) |
+| LLM Summaries | Claude Haiku via Anthropic SDK (or Azure AI Foundry) |
+| LLM Analysis | Claude Sonnet via Anthropic SDK (or Azure AI Foundry) |
+| Embeddings | Voyage AI, OpenAI, or Azure OpenAI (configurable) |
 | CLI | Commander |
 | Dashboard | Express + HTMX (server-rendered) |
-| Auth | Azure Entra ID (MSAL) |
+| REST API | Express — semantic search, context enricher, findings, project management |
+| MCP Server | Stateless Streamable HTTP — 11 tools for AI agent integration |
+| Auth | Azure Entra ID (MSAL) + API key auth for programmatic access |
 | Logging | Pino |
-| Testing | Vitest (236 tests) |
+| Testing | Vitest |
 
 ---
 
@@ -161,19 +188,26 @@ cp .env.example .env
 # Required
 DATABASE_URL=postgresql://localhost:5432/prism
 
-# For LLM summaries (Layer 3)
+# For LLM summaries / analysis / blueprints — choose one provider
 ANTHROPIC_API_KEY=sk-ant-...
+# Or use Azure AI Foundry:
+# ANTHROPIC_BASE_URL=https://your-resource.services.ai.azure.com/api
 
 # For embeddings — choose one provider
-EMBEDDING_PROVIDER=voyage          # or "openai"
+EMBEDDING_PROVIDER=voyage          # or "openai" or "azure-openai"
 VOYAGE_API_KEY=pa-...              # if using Voyage
 OPENAI_API_KEY=sk-...              # if using OpenAI
+# AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+# AZURE_OPENAI_API_KEY=...         # if using Azure OpenAI
 
 # For dashboard auth
 AZURE_TENANT_ID=...
 AZURE_CLIENT_ID=...
 AZURE_CLIENT_SECRET=...
 SESSION_SECRET=your-secret-here
+
+# For API / MCP access (or generate keys via dashboard)
+PRISM_API_KEY=prism_...
 
 # Optional
 DASHBOARD_PORT=3100                # default: 3100
@@ -222,6 +256,7 @@ prism index my-app --layer structural     # Layer 1 only
 prism index my-app --layer docs           # Layer 2 only
 prism index my-app --layer semantic       # Layer 3 (LLM summaries + embeddings)
 prism index my-app --layer analysis       # Layer 4 (rollup + pattern detection)
+prism index my-app --layer history        # Git history (co-changes, hotspots)
 prism index my-app --full                 # force full re-index
 ```
 
@@ -327,7 +362,84 @@ Authentication is via Azure Entra ID. Set `SKIP_AUTH=true` for local development
 
 ---
 
-## The Five Layers
+## MCP Server
+
+Prism exposes an MCP (Model Context Protocol) server for AI agent integration. Any MCP-compatible client (Claude Code, Cursor, etc.) can connect and query the indexed codebase.
+
+**Endpoint:** `POST /mcp` (stateless Streamable HTTP transport)
+
+**Auth:** API key via `Authorization: Bearer prism_...` header
+
+**Claude Code configuration** (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "prism": {
+      "type": "http",
+      "url": "https://your-prism-instance/mcp",
+      "headers": {
+        "Authorization": "Bearer prism_..."
+      }
+    }
+  }
+}
+```
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_codebase` | Semantic search — returns relevant code snippets and module summaries |
+| `get_file_context` | File-level context — summary, dependencies, symbols, findings, change history |
+| `get_module_context` | Module-level context — purpose, files, public API, findings |
+| `get_related_files` | Find related files via semantic similarity and dependency graph |
+| `get_architecture_overview` | System-wide architecture — module map, inter-module dependencies, critical findings |
+| `get_change_context` | Change history — recent commits, hotspots, co-change patterns |
+| `get_review_context` | Drift review — recent changes vs architecture baseline |
+| `get_project_status` | Project status — index state, file count, last index time, active jobs |
+| `register_project` | Register a new project for indexing |
+| `delete_project` | Delete a project and all associated data |
+| `trigger_reindex` | Queue a reindex with optional layer selection |
+
+All project-scoped tools take a `slug` parameter (`owner/repo` format).
+
+---
+
+## REST API
+
+All API endpoints require a Bearer token (`Authorization: Bearer prism_...`). API keys can be generated via the dashboard or set via the `PRISM_API_KEY` environment variable.
+
+### Search & Findings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/projects/:owner/:repo/search` | Semantic search — returns relevant code + module summaries |
+| `GET` | `/api/projects/:owner/:repo/findings` | Static analysis findings (filterable by `severity`, `limit` query params) |
+
+### Context Enricher
+
+Token-budget-aware context assembly for AI agents. Each endpoint accepts a `maxTokens` parameter.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/projects/:owner/:repo/context/file` | File context — summary, deps, symbols, findings, history |
+| `POST` | `/api/projects/:owner/:repo/context/module` | Module context — purpose, structure, public API |
+| `POST` | `/api/projects/:owner/:repo/context/related` | Related files via semantic + dependency graph |
+| `POST` | `/api/projects/:owner/:repo/context/arch` | Architecture overview |
+| `POST` | `/api/projects/:owner/:repo/context/changes` | Change history, hotspots, co-change patterns |
+| `POST` | `/api/projects/:owner/:repo/context/review` | Drift review — recent changes vs baseline |
+
+### Project Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/projects/:owner/:repo/reindex` | Queue reindex (returns 202) |
+| `DELETE` | `/api/projects/:owner/:repo` | Delete project and all data |
+
+---
+
+## The Indexing Layers
 
 ### Layer 1: Structural
 
@@ -358,7 +470,7 @@ Calls Claude Haiku to generate natural-language summaries of every function and 
 
 **Staleness detection**: SHA-256 hash of the prompt input — only re-summarizes when code changes.
 
-**Embedding providers**: Voyage AI (`voyage-code-3`) or OpenAI (`text-embedding-3-small`), 1536 dimensions.
+**Embedding providers**: Voyage AI (`voyage-code-3`), OpenAI (`text-embedding-3-small`), or Azure OpenAI.
 
 ### Layer 4: Analysis
 
@@ -380,6 +492,43 @@ Rolls up summaries hierarchically (function → file → module → system) and 
 Feeds the complete project understanding — system summary, all findings, and project intent — to Claude Sonnet to generate subsystem-focused redesign proposals.
 
 Each blueprint includes: proposed architecture, module changes, migration path, risks with mitigations, and rationale.
+
+### History Layer
+
+Parses git history to extract change patterns and identify code hotspots.
+
+**What it extracts**:
+- Commit history with per-file change stats (additions, deletions)
+- PR and ticket references from commit messages (e.g., `#123`, `JIRA-456`, `AB#789`)
+- Change frequency and recency per file
+- Co-change patterns — files that frequently change together
+
+**Options**: configurable `maxCommits` (default 200), supports incremental and full reindex.
+
+### Context Enricher
+
+Assembles multi-signal, token-budget-aware context from all indexed data. Designed to give AI agents exactly the context they need without exceeding their token limits.
+
+**Signal types collected**:
+| Signal | Source |
+|--------|--------|
+| Summaries | File and module summaries from semantic analysis |
+| Graph | Forward/reverse dependencies via BFS traversal |
+| Findings | Static analysis findings scoped to file/module |
+| Semantic | Intent-matched vector search results |
+| History | Change frequency, co-changes, hotspots, recent commits |
+| Symbols | Exported symbols with signatures |
+| Architecture | Module map, inter-module dependencies |
+
+**Context types**:
+- **File** — everything about one file: summary, deps, symbols, findings, change history
+- **Module** — directory overview: purpose, files, public API, findings
+- **Related** — files related via semantic similarity and dependency graph
+- **Architecture** — system-wide module map and critical findings
+- **Changes** — change history scoped by file, module, or date range
+- **Review** — drift detection: recent changes vs architecture baseline
+
+Signals are ranked by priority and relevance, then truncated to fit the requested token budget.
 
 ---
 
@@ -404,7 +553,7 @@ structural:
 semantic:
   enabled: true
   model: "claude-haiku-4-5-20251001"
-  embeddingProvider: "voyage"     # or "openai"
+  embeddingProvider: "voyage"     # or "openai" or "azure-openai"
   embeddingModel: "voyage-code-3"
   embeddingDimensions: 1536
   budgetUsd: 10.0
@@ -485,9 +634,27 @@ All tables use the `prism_` prefix. PostgreSQL with pgvector extension.
 │              │     │ status       │     │ cost_usd         │
 │              │     │ files_proc   │     └──────────────────┘
 │              │     │ files_total  │
-│              │     │ cost_usd     │
-│              │     │ duration_ms  │
-│              │     │ error        │
+│              │     │ cost_usd     │     ┌──────────────────┐
+│              │     │ duration_ms  │────<│    commits       │
+│              │     │ error        │     │                  │
+│              │     └──────────────┘     │ sha              │
+│              │                          │ author_name      │
+│              │     ┌──────────────┐     │ author_email     │
+│              │────<│  api_keys    │     │ committed_at     │
+│              │     │              │     │ message          │
+│              │     │ key_prefix   │     │ metadata (JSONB) │
+│              │     │ key_hash     │     └────────┬─────────┘
+│              │     │ label        │              │
+│              │     │ permissions  │     ┌────────┴─────────┐
+│              │     │ last_used_at │     │  commit_files    │
+│              │     └──────────────┘     │                  │
+│              │                          │ commit_id        │
+│              │     ┌──────────────┐     │ file_id          │
+│              │────<│reindex_reqs  │     │ change_type      │
+│              │     │              │     │ lines_added      │
+│              │     │ slug         │     │ lines_removed    │
+│              │     │ layers       │     └──────────────────┘
+│              │     │ requested_at │
 └──────────────┘     └──────────────┘
 ```
 
@@ -518,13 +685,27 @@ prism/
 │   │       │   │   ├── summarizer.ts Claude Haiku summarization
 │   │       │   │   ├── embedder.ts   Voyage/OpenAI embedding providers
 │   │       │   │   └── chunker.ts    AST-aware code chunking
-│   │       │   └── analysis/         Layer 4: pattern detection
-│   │       │       ├── rollup.ts     Hierarchical summary rollup
-│   │       │       ├── patterns.ts   Pattern detection orchestrator
-│   │       │       ├── gap-analysis.ts  Docs vs code comparison
-│   │       │       └── detectors/    5 architectural pattern detectors
+│   │       │   ├── analysis/         Layer 4: pattern detection
+│   │       │   │   ├── rollup.ts     Hierarchical summary rollup
+│   │       │   │   ├── patterns.ts   Pattern detection orchestrator
+│   │       │   │   ├── gap-analysis.ts  Docs vs code comparison
+│   │       │   │   └── detectors/    5 architectural pattern detectors
+│   │       │   └── history/          Git history indexing
+│   │       │       └── index.ts      Commit parsing, co-change detection
+│   │       ├── context/              Context enricher
+│   │       │   ├── assembler.ts      Multi-signal context assembly
+│   │       │   ├── ranker.ts         Signal ranking + truncation
+│   │       │   ├── truncator.ts      Token-budget-aware truncation
+│   │       │   ├── formatter.ts      Markdown output formatting
+│   │       │   ├── types.ts          Context + signal types
+│   │       │   └── signals/          Signal collectors
+│   │       │       ├── semantic.ts   Vector search signals
+│   │       │       ├── graph.ts      Dependency graph signals
+│   │       │       ├── findings.ts   Static analysis signals
+│   │       │       ├── history.ts    Change history signals
+│   │       │       └── summaries.ts  Summary signals
 │   │       ├── db/
-│   │       │   ├── schema.ts         9 prism_ tables (Drizzle)
+│   │       │   ├── schema.ts         13 prism_ tables (Drizzle)
 │   │       │   ├── connection.ts     Pool + Drizzle singleton
 │   │       │   ├── migrate.ts        Migration runner
 │   │       │   └── queries/          CRUD for all tables
@@ -540,17 +721,19 @@ prism/
 │           │   └── commands/         7 commands
 │           ├── dashboard/
 │           │   ├── server.ts         Express setup + auth
-│           │   ├── routes/           8 route handlers
-│           │   ├── views/            10 HTML-generating view modules
+│           │   ├── routes/           Route handlers (pages, API, MCP)
+│           │   ├── views/            HTML-generating view modules
 │           │   └── public/           HTMX extensions + D3 graph
 │           ├── blueprint/
 │           │   ├── generator.ts      Claude Sonnet → proposals
 │           │   ├── splitter.ts       Subsystem grouping
 │           │   └── types.ts          Blueprint types
-│           └── auth/
-│               ├── entra.ts          Azure Entra ID OAuth2
-│               ├── session.ts        Express session
-│               └── middleware.ts     Auth guard
+│           ├── auth/
+│           │   ├── entra.ts          Azure Entra ID OAuth2
+│           │   ├── session.ts        Express session
+│           │   ├── middleware.ts      Auth guard
+│           │   └── api-key.ts        API key auth for REST/MCP
+│           └── worker/               Background reindex worker
 │
 ├── prompts/                          LLM prompt templates
 │   ├── summarize-function.md
@@ -572,7 +755,7 @@ prism/
 
 ```bash
 npm run build         # Build all packages (tsc)
-npm test              # Run all 236 tests (vitest)
+npm test              # Run tests (vitest)
 npm run test:watch    # Watch mode
 npm run lint          # Type-check without emitting
 ```
