@@ -29,6 +29,11 @@ import {
   collectFindingsByModulePath,
   collectCriticalFindings,
 } from "./signals/findings.js";
+import {
+  getRecentCommitsByProjectId,
+  getRecentCommitsByFileId,
+  type CommitRow,
+} from "../db/queries/commits.js";
 import { collectSemanticSignal } from "./signals/semantic.js";
 import {
   getCoChangedFiles,
@@ -619,16 +624,7 @@ export async function assembleTaskContext(
   // 2. Extract top file paths from semantic results
   const topFilePaths = extractTopFilePaths(semanticSignal, 5);
 
-  // 3. Derive the most common module from top file paths
-  const moduleCounts = new Map<string, number>();
-  for (const fp of topFilePaths) {
-    const mod = getTopLevelModule(fp);
-    if (mod) moduleCounts.set(mod, (moduleCounts.get(mod) ?? 0) + 1);
-  }
-  const topModule = [...moduleCounts.entries()]
-    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-
-  // 4. Resolve file IDs for graph signals (top 3)
+  // 3. Resolve file IDs for graph signals (top 3)
   const allFiles = await getProjectFiles(projectId);
   const fileByPath = new Map(allFiles.map((f) => [f.path, f]));
   const top3Files = topFilePaths.slice(0, 3);
@@ -636,34 +632,41 @@ export async function assembleTaskContext(
     .map((p) => fileByPath.get(p))
     .filter((f): f is FileRow => f != null);
 
-  // 5. Fan-out: collect signals in parallel
-  const [archSummaries, fileSummaryMap, criticalFindings, ...graphResults] =
+  // 4. Fan-out: collect signals in parallel (no findings — too generic for task context)
+  const [archSummaries, fileSummaryMap, recentProjectCommits, ...graphResults] =
     await Promise.all([
       collectArchitectureSummaries(projectId),
       collectFileSummariesBatch(projectId, topFilePaths),
-      collectCriticalFindings(projectId),
+      getRecentCommitsByProjectId(projectId, 10),
       ...top3FileIds.map((f) => collectGraphSignal({ projectId, fileId: f.id })),
     ]);
 
-  // Collect file-scoped findings for top 3 files in parallel
-  const fileFindingsResults = await Promise.all(
-    top3Files.map((fp) => collectFindingsByFilePath(projectId, fp)),
-  );
-
-  // Collect change signals for the most common module (graceful skip)
-  let changeSignals: SignalResult[] = [];
-  if (topModule) {
-    try {
-      changeSignals = await collectChangeSignals({
-        projectId,
-        modulePath: topModule,
-      });
-    } catch {
-      // History tables may not exist — gracefully skip
+  // Collect commits for each of the top found files (scoped history)
+  let fileCommits: CommitRow[] = [];
+  try {
+    const perFileCommits = await Promise.all(
+      top3FileIds.map((f) => getRecentCommitsByFileId(f.id, 10)),
+    );
+    // Merge and deduplicate by sha, sort by date descending
+    const seen = new Set<string>();
+    for (const batch of perFileCommits) {
+      for (const c of batch) {
+        if (!seen.has(c.sha)) {
+          seen.add(c.sha);
+          fileCommits.push(c);
+        }
+      }
     }
+    fileCommits.sort(
+      (a, b) =>
+        (b.committedAt?.getTime() ?? 0) - (a.committedAt?.getTime() ?? 0),
+    );
+    fileCommits = fileCommits.slice(0, 15);
+  } catch {
+    // History tables may not exist — gracefully skip
   }
 
-  // 6. Build signals array with priorities
+  // 5. Build signals array with priorities
 
   const signals: SignalResult[] = [];
 
@@ -714,24 +717,35 @@ export async function assembleTaskContext(
     }
   }
 
-  // Priority 3: Critical + file-scoped findings
-  if (criticalFindings.items.length > 0) {
-    signals.push({ ...criticalFindings, priority: 3 });
-  }
-  for (let i = 0; i < fileFindingsResults.length; i++) {
-    const findings = fileFindingsResults[i];
-    if (findings.items.length > 0) {
-      signals.push({
-        ...findings,
-        heading: `Findings — ${top3Files[i]}`,
-        priority: 3,
-      });
-    }
+  // Priority 3: Commits touching the found files (scoped history)
+  if (fileCommits.length > 0) {
+    signals.push({
+      heading: "Commits for Relevant Files",
+      priority: 3,
+      items: fileCommits.map((c) => ({
+        content: `\`${c.sha.slice(0, 7)}\` ${c.message}${c.authorName ? ` — ${c.authorName}` : ""}${c.committedAt ? ` (${c.committedAt.toISOString().slice(0, 10)})` : ""}`,
+        relevance: 0.8,
+      })),
+    });
   }
 
-  // Priority 4: Recent changes for affected module
-  for (const cs of changeSignals) {
-    signals.push({ ...cs, priority: 4 });
+  // Priority 4: Most recent project commits (broader context)
+  if (recentProjectCommits.length > 0) {
+    // Exclude commits already shown in file-scoped section
+    const fileCommitShas = new Set(fileCommits.map((c) => c.sha));
+    const uniqueProjectCommits = recentProjectCommits.filter(
+      (c) => !fileCommitShas.has(c.sha),
+    );
+    if (uniqueProjectCommits.length > 0) {
+      signals.push({
+        heading: "Recent Commits",
+        priority: 4,
+        items: uniqueProjectCommits.map((c) => ({
+          content: `\`${c.sha.slice(0, 7)}\` ${c.message}${c.authorName ? ` — ${c.authorName}` : ""}${c.committedAt ? ` (${c.committedAt.toISOString().slice(0, 10)})` : ""}`,
+          relevance: 0.6,
+        })),
+      });
+    }
   }
 
   // Priority 5: Module map (breadth, nice-to-have)
