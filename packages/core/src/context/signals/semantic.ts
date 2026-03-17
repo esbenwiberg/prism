@@ -25,6 +25,8 @@ export interface SemanticSignalOptions extends RankOptions {
   limit?: number;
   heading?: string;
   priority?: number;
+  /** Minimum similarity score (0-1) to include a vector result. Default: 0.25 */
+  minScore?: number;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function collectSemanticSignal(
     limit = 15,
     heading = "Semantically Related",
     priority = 4,
+    minScore = 0.25,
   } = options;
 
   const config = getConfig();
@@ -57,6 +60,10 @@ export async function collectSemanticSignal(
   } catch {
     results = await simpleSimilaritySearch(projectId, queryVector, limit);
   }
+
+  // Filter out low-similarity results — prevents irrelevant files from
+  // diluting the signal when the vector search can't find good matches
+  results = results.filter((r) => r.score >= minScore);
 
   const items: SignalItem[] = results.map((r) => {
     const relevance = computeRelevance(r.score, r.filePath, options);

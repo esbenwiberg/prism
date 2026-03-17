@@ -748,9 +748,6 @@ export async function assembleTaskContext(
     }
   }
 
-  // Priority 5: Module map (breadth, nice-to-have)
-  signals.push({ ...archSummaries.modules, priority: 5 });
-
   const sections = signalsToSections(signals);
   return truncateSections(sections, maxTokens);
 }
