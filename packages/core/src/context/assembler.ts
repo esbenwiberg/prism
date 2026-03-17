@@ -1,0 +1,536 @@
+/**
+ * Context assembler — orchestrates signal collectors, ranks, truncates.
+ *
+ * Each public function corresponds to one MCP tool / REST endpoint.
+ * All intelligence is at index time; this is pure data retrieval + ranking.
+ */
+
+import { getFileByPath, type FileRow } from "../db/queries/files.js";
+import { getProjectFiles } from "../db/queries/files.js";
+import { getFilesByDirectory } from "../db/queries/files.js";
+import { getExportedSymbolsByFileId } from "../db/queries/symbols.js";
+import { getSymbolsByFileId } from "../db/queries/symbols.js";
+import {
+  getDependenciesBySourceFileId,
+  getDependenciesByTargetFileId,
+  getDependenciesByProjectId,
+} from "../db/queries/dependencies.js";
+import { getSummariesByLevel } from "../db/queries/summaries.js";
+
+import {
+  collectFileSummaries,
+  collectModuleSummaries,
+  collectArchitectureSummaries,
+  collectFileSummariesBatch,
+} from "./signals/summaries.js";
+import { collectGraphSignal, getRelatedFileIds } from "./signals/graph.js";
+import {
+  collectFindingsByFilePath,
+  collectFindingsByModulePath,
+  collectCriticalFindings,
+} from "./signals/findings.js";
+import { collectSemanticSignal } from "./signals/semantic.js";
+import {
+  collectChangeSignals,
+  collectReviewSignals,
+} from "./signals/history.js";
+import { computeRelevance, mergeRankedItems } from "./ranker.js";
+import { signalsToSections, truncateSections } from "./truncator.js";
+import { formatContextAsMarkdown } from "./formatter.js";
+
+import type { ContextResponse, SignalResult } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// get_file_context
+// ---------------------------------------------------------------------------
+
+export interface FileContextInput {
+  projectId: number;
+  filePath: string;
+  intent?: string;
+  maxTokens?: number;
+}
+
+export async function assembleFileContext(
+  input: FileContextInput,
+): Promise<ContextResponse> {
+  const { projectId, filePath, intent, maxTokens = 4000 } = input;
+
+  const file = await getFileByPath(projectId, filePath);
+  if (!file) {
+    return {
+      sections: [
+        {
+          heading: "Error",
+          priority: 1,
+          content: `File "${filePath}" not found in the index.`,
+          tokenCount: 15,
+        },
+      ],
+      totalTokens: 15,
+      truncated: false,
+    };
+  }
+
+  // Fan-out: collect signals in parallel
+  const [summarySignal, graphSignals, findingsSignal, symbols] =
+    await Promise.all([
+      collectFileSummaries(projectId, filePath),
+      collectGraphSignal({ projectId, fileId: file.id }),
+      collectFindingsByFilePath(projectId, filePath),
+      getExportedSymbolsByFileId(file.id),
+    ]);
+
+  // Build symbols section
+  const symbolsSignal: SignalResult = {
+    heading: "Exported Symbols",
+    priority: 4,
+    items: symbols.map((s) => ({
+      content: `\`${s.signature || s.name}\` (${s.kind})`,
+      relevance: 0.6,
+    })),
+  };
+
+  // Enrich graph signals with file summaries
+  const allGraphFileIds = new Set<number>();
+  const forwardDeps = await getDependenciesBySourceFileId(file.id);
+  const reverseDeps = await getDependenciesByTargetFileId(file.id);
+  for (const d of forwardDeps) if (d.targetFileId) allGraphFileIds.add(d.targetFileId);
+  for (const d of reverseDeps) allGraphFileIds.add(d.sourceFileId);
+
+  const allFiles = await getProjectFiles(projectId);
+  const fileMap = new Map<number, FileRow>(allFiles.map((f) => [f.id, f]));
+  const graphFilePaths = [...allGraphFileIds]
+    .map((id) => fileMap.get(id)?.path)
+    .filter((p): p is string => p != null);
+  const summaryMap = await collectFileSummariesBatch(projectId, graphFilePaths);
+
+  // Enrich blast radius items with summaries
+  const enrichedReverse: SignalResult = {
+    ...graphSignals.reverse,
+    items: graphSignals.reverse.items.map((item) => {
+      const path = extractPathFromContent(item.content);
+      const summary = path ? summaryMap.get(path) : null;
+      return summary
+        ? { ...item, content: `${item.content}\n${summary}` }
+        : item;
+    }),
+  };
+
+  // Enrich forward deps with summaries
+  const enrichedForward: SignalResult = {
+    ...graphSignals.forward,
+    items: graphSignals.forward.items.map((item) => {
+      const path = extractPathFromContent(item.content);
+      const summary = path ? summaryMap.get(path) : null;
+      return summary
+        ? { ...item, content: `${item.content}\n${summary}` }
+        : item;
+    }),
+  };
+
+  const signals: SignalResult[] = [
+    summarySignal,
+    enrichedReverse,
+    enrichedForward,
+    symbolsSignal,
+    findingsSignal,
+  ];
+
+  // Optional: intent-matched semantic search
+  if (intent) {
+    const semanticSignal = await collectSemanticSignal({
+      projectId,
+      query: intent,
+      limit: 8,
+      heading: "Intent-Matched Results",
+      priority: 6,
+      intent,
+    });
+    signals.push(semanticSignal);
+  }
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+// ---------------------------------------------------------------------------
+// get_module_context
+// ---------------------------------------------------------------------------
+
+export interface ModuleContextInput {
+  projectId: number;
+  modulePath: string;
+  maxTokens?: number;
+}
+
+export async function assembleModuleContext(
+  input: ModuleContextInput,
+): Promise<ContextResponse> {
+  const { projectId, modulePath, maxTokens = 3000 } = input;
+
+  const [summarySignal, filesInModule, findingsSignal, allDeps] =
+    await Promise.all([
+      collectModuleSummaries(projectId, modulePath),
+      getFilesByDirectory(projectId, modulePath),
+      collectFindingsByModulePath(projectId, modulePath),
+      getDependenciesByProjectId(projectId),
+    ]);
+
+  if (filesInModule.length === 0) {
+    return {
+      sections: [
+        {
+          heading: "Error",
+          priority: 1,
+          content: `No files found in module "${modulePath}".`,
+          tokenCount: 15,
+        },
+      ],
+      totalTokens: 15,
+      truncated: false,
+    };
+  }
+
+  // File summaries for all files in module
+  const filePaths = filesInModule.map((f) => f.path);
+  const summaryMap = await collectFileSummariesBatch(projectId, filePaths);
+
+  const fileListSignal: SignalResult = {
+    heading: "Files in Module",
+    priority: 2,
+    items: filesInModule.map((f) => {
+      const summary = summaryMap.get(f.path) ?? "";
+      const metrics = [
+        f.complexity ? `complexity: ${f.complexity}` : null,
+        f.lineCount ? `${f.lineCount} lines` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      return {
+        content: `**${f.path}** ${metrics ? `(${metrics})` : ""}\n${summary}`,
+        relevance: 0.7,
+      };
+    }),
+  };
+
+  // External dependencies (crossing module boundary)
+  const moduleFileIds = new Set(filesInModule.map((f) => f.id));
+  const externalDeps = allDeps.filter(
+    (d) =>
+      moduleFileIds.has(d.sourceFileId) &&
+      d.targetFileId != null &&
+      !moduleFileIds.has(d.targetFileId),
+  );
+
+  const allFiles = await getProjectFiles(projectId);
+  const fileMap = new Map<number, FileRow>(allFiles.map((f) => [f.id, f]));
+  const externalPaths = [
+    ...new Set(
+      externalDeps
+        .map((d) => (d.targetFileId ? fileMap.get(d.targetFileId)?.path : null))
+        .filter((p): p is string => p != null),
+    ),
+  ];
+
+  const externalDepsSignal: SignalResult = {
+    heading: "External Dependencies",
+    priority: 3,
+    items: externalPaths.map((p) => ({
+      content: `→ ${p}`,
+      relevance: 0.5,
+    })),
+  };
+
+  // Key exports
+  const exportPromises = filesInModule.map(async (f) => {
+    const syms = await getExportedSymbolsByFileId(f.id);
+    return syms.map((s) => ({
+      content: `\`${s.signature || s.name}\` from ${f.path} (${s.kind})`,
+      relevance: 0.5,
+    }));
+  });
+  const allExports = (await Promise.all(exportPromises)).flat();
+
+  const exportsSignal: SignalResult = {
+    heading: "Key Exports",
+    priority: 4,
+    items: allExports,
+  };
+
+  const signals = [
+    summarySignal,
+    fileListSignal,
+    externalDepsSignal,
+    exportsSignal,
+    findingsSignal,
+  ];
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+// ---------------------------------------------------------------------------
+// get_related_files
+// ---------------------------------------------------------------------------
+
+export interface RelatedFilesInput {
+  projectId: number;
+  query: string;
+  maxResults?: number;
+  includeTests?: boolean;
+}
+
+export interface RelatedFileResult {
+  path: string;
+  score: number;
+  summary: string;
+  relationship: string;
+}
+
+export async function assembleRelatedFiles(
+  input: RelatedFilesInput,
+): Promise<RelatedFileResult[]> {
+  const { projectId, query, maxResults = 15, includeTests = false } = input;
+
+  // Run semantic search
+  const semanticSignal = await collectSemanticSignal({
+    projectId,
+    query,
+    limit: maxResults * 2,
+    includeTests,
+  });
+
+  // Try graph traversal if query looks like a file path
+  let graphFileScores = new Map<number, number>();
+  const allFiles = await getProjectFiles(projectId);
+  const fileByPath = new Map(allFiles.map((f) => [f.path, f]));
+
+  const queryFile = fileByPath.get(query);
+  if (queryFile) {
+    graphFileScores = await getRelatedFileIds(projectId, queryFile.id, 2);
+  }
+
+  // Build path → score map from semantic results
+  const semanticScores = new Map<string, number>();
+  for (const item of semanticSignal.items) {
+    const path = extractPathFromContent(item.content);
+    if (path && !semanticScores.has(path)) {
+      semanticScores.set(path, item.relevance);
+    }
+  }
+
+  // Build path → score map from graph results
+  const graphPathScores = new Map<string, number>();
+  const fileMap = new Map<number, FileRow>(allFiles.map((f) => [f.id, f]));
+  for (const [fileId, depth] of graphFileScores) {
+    const file = fileMap.get(fileId);
+    if (file) {
+      graphPathScores.set(file.path, 1 / depth);
+    }
+  }
+
+  // Merge scores
+  const allPaths = new Set([...semanticScores.keys(), ...graphPathScores.keys()]);
+  const scored: Array<{ path: string; score: number; relationship: string }> = [];
+
+  for (const path of allPaths) {
+    const semantic = semanticScores.get(path) ?? 0;
+    const graph = graphPathScores.get(path) ?? 0;
+    const combined = semantic * 0.6 + graph * 0.4;
+    const boost = semantic > 0 && graph > 0 ? 0.15 : 0;
+
+    // Determine relationship type
+    let relationship = "semantic";
+    if (graph > 0 && semantic > 0) relationship = "semantic + dependency";
+    else if (graph > 0) relationship = "dependency";
+
+    // Test file penalty
+    const file = fileByPath.get(path);
+    if (!includeTests && file?.isTest) continue;
+
+    scored.push({ path, score: combined + boost, relationship });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  const topResults = scored.slice(0, maxResults);
+
+  // Fetch summaries for top results
+  const summaryMap = await collectFileSummariesBatch(
+    projectId,
+    topResults.map((r) => r.path),
+  );
+
+  return topResults.map((r) => ({
+    path: r.path,
+    score: r.score,
+    summary: summaryMap.get(r.path) ?? "",
+    relationship: r.relationship,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// get_architecture_overview
+// ---------------------------------------------------------------------------
+
+export interface ArchitectureOverviewInput {
+  projectId: number;
+  maxTokens?: number;
+}
+
+export async function assembleArchitectureOverview(
+  input: ArchitectureOverviewInput,
+): Promise<ContextResponse> {
+  const { projectId, maxTokens = 5000 } = input;
+
+  const [archSummaries, criticalFindings, allDeps] = await Promise.all([
+    collectArchitectureSummaries(projectId),
+    collectCriticalFindings(projectId),
+    getDependenciesByProjectId(projectId),
+  ]);
+
+  // Build inter-module dependency graph
+  const allFiles = await getProjectFiles(projectId);
+  const fileMap = new Map<number, FileRow>(allFiles.map((f) => [f.id, f]));
+
+  const moduleEdges = new Map<string, Set<string>>();
+  for (const dep of allDeps) {
+    if (!dep.targetFileId) continue;
+    const sourceFile = fileMap.get(dep.sourceFileId);
+    const targetFile = fileMap.get(dep.targetFileId);
+    if (!sourceFile || !targetFile) continue;
+
+    const sourceModule = getTopLevelModule(sourceFile.path);
+    const targetModule = getTopLevelModule(targetFile.path);
+    if (sourceModule && targetModule && sourceModule !== targetModule) {
+      if (!moduleEdges.has(sourceModule)) moduleEdges.set(sourceModule, new Set());
+      moduleEdges.get(sourceModule)!.add(targetModule);
+    }
+  }
+
+  const interModuleSignal: SignalResult = {
+    heading: "Inter-Module Dependencies",
+    priority: 3,
+    items:
+      moduleEdges.size > 0
+        ? [...moduleEdges.entries()].map(([from, toSet]) => ({
+            content: `${from} → ${[...toSet].join(", ")}`,
+            relevance: 0.6,
+          }))
+        : [{ content: "No cross-module dependencies detected.", relevance: 0.3 }],
+  };
+
+  const signals = [
+    archSummaries.purpose,
+    archSummaries.system,
+    archSummaries.modules,
+    interModuleSignal,
+    criticalFindings,
+  ];
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function extractPathFromContent(content: string): string | null {
+  // Extract path from "**path/to/file**" markdown bold
+  const match = content.match(/\*\*([^*]+)\*\*/);
+  if (!match) return null;
+  const path = match[1];
+  // Filter out non-path-like strings
+  if (path.includes(" ") && !path.includes("/")) return null;
+  // Strip "(depth N)" suffix
+  return path.replace(/\s*\(depth \d+\)/, "");
+}
+
+// ---------------------------------------------------------------------------
+// get_change_context
+// ---------------------------------------------------------------------------
+
+export interface ChangeContextInput {
+  projectId: number;
+  filePath?: string;
+  modulePath?: string;
+  since?: string;
+  until?: string;
+  maxCommits?: number;
+  maxTokens?: number;
+}
+
+export async function assembleChangeContext(
+  input: ChangeContextInput,
+): Promise<ContextResponse> {
+  const {
+    projectId,
+    filePath,
+    modulePath,
+    since,
+    until,
+    maxCommits,
+    maxTokens = 4000,
+  } = input;
+
+  const signals = await collectChangeSignals({
+    projectId,
+    filePath,
+    modulePath,
+    since: since ? new Date(since) : undefined,
+    until: until ? new Date(until) : undefined,
+    maxCommits,
+  });
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+// ---------------------------------------------------------------------------
+// get_review_context
+// ---------------------------------------------------------------------------
+
+export interface ReviewContextInput {
+  projectId: number;
+  since: string;
+  until?: string;
+  maxTokens?: number;
+}
+
+export async function assembleReviewContext(
+  input: ReviewContextInput,
+): Promise<ContextResponse> {
+  const {
+    projectId,
+    since,
+    until,
+    maxTokens = 8000,
+  } = input;
+
+  const sinceDate = new Date(since);
+  const untilDate = until ? new Date(until) : new Date();
+
+  const signals = await collectReviewSignals({
+    projectId,
+    since: sinceDate,
+    until: untilDate,
+  });
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getTopLevelModule(filePath: string): string | null {
+  const parts = filePath.split("/");
+  // Use first two path segments as module identifier
+  // e.g. "src/db/queries/files.ts" → "src/db"
+  if (parts.length >= 2) {
+    return parts.slice(0, 2).join("/");
+  }
+  return parts[0] || null;
+}

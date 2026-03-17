@@ -13,3 +13,4 @@ export * from "./llm/index.js";
 export * from "./crypto/credentials.js";
 export * from "./git/types.js";
 export * from "./git/clone.js";
+export * from "./context/index.js";
