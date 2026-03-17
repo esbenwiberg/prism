@@ -43,6 +43,7 @@ import {
   assembleArchitectureOverview,
   assembleChangeContext,
   assembleReviewContext,
+  assembleTaskContext,
   formatContextAsMarkdown,
 } from "@prism/core";
 import { requireApiKey } from "../../auth/api-key.js";
@@ -349,6 +350,26 @@ function createMcpServer(permissions: string[]): Server {
             },
           },
           required: ["slug", "since"],
+        },
+      },
+      {
+        name: "enrich_task_context",
+        description:
+          "Get curated context for a task: architecture overview, relevant files with summaries, dependencies, blast radius, findings, and recent changes — all scoped to the query. Use this as a one-shot context loader before starting work on a task.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            query: {
+              type: "string",
+              description: "Natural language description of the task or question",
+            },
+            maxTokens: {
+              type: "number",
+              description: "Token budget for response (default: 16000)",
+            },
+          },
+          required: ["slug", "query"],
         },
       },
     ],
@@ -729,6 +750,38 @@ function createMcpServer(permissions: string[]): Server {
         return { content: [{ type: "text" as const, text }] };
       } catch (err) {
         logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "get_architecture_overview failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // enrich_task_context
+    // -----------------------------------------------------------------------
+    if (toolName === "enrich_task_context") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, query, maxTokens } = args as {
+        slug: string;
+        query: string;
+        maxTokens?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleTaskContext({
+          projectId: project.id,
+          query,
+          maxTokens,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "enrich_task_context failed");
         return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
       }
     }

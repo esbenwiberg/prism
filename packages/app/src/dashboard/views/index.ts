@@ -123,6 +123,7 @@ export {
 } from "./api-keys.js";
 
 export { getStartedPage } from "./get-started.js";
+export { apiDocsPage, apiDocsFragment } from "./api-docs.js";
 
 export {
   historyPage,
