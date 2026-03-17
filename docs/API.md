@@ -171,6 +171,36 @@ DELETE /api/projects/:owner/:repo
 
 Rich, pre-assembled context designed to be injected into LLM prompts. Each endpoint returns structured sections with token counts.
 
+### Task context (enrichment) — recommended entry point
+
+One-shot endpoint that assembles everything an agent needs to start a task: architecture overview, relevant files with summaries, dependencies, blast radius, findings, and recent changes — all scoped to a natural language query. Prism allocates the token budget across signals automatically using its priority system.
+
+```
+POST /api/projects/:owner/:repo/context/enrich
+```
+
+**Permission:** `read`
+
+**Request body:**
+
+```json
+{
+  "query": "add retry mechanism to LLM calls in the indexer",
+  "maxTokens": 16000
+}
+```
+
+| Field       | Type     | Required | Default  | Description                                      |
+|-------------|----------|----------|----------|--------------------------------------------------|
+| `query`     | `string` | yes      |          | Natural language description of the task         |
+| `maxTokens` | `number` | no       | `16000`  | Token budget — priority system allocates it      |
+
+**Response `200`:** Context object with sections (architecture, relevant code, file summaries, blast radius, dependencies, findings, recent changes) and token metadata. High-priority sections survive even with small token budgets.
+
+**Graceful degradation:** If no semantic layer is indexed yet, returns architecture + critical findings. Never returns empty.
+
+---
+
 ### File context
 
 Summary, blast radius, dependencies, exported symbols, and findings for a single file.
@@ -422,6 +452,7 @@ POST /mcp
 | `get_architecture_overview`| `read`       | System architecture: purpose, module map, inter-module dependencies, critical findings          |
 | `get_change_context`       | `read`       | Recent commits, change frequency, co-change patterns, author distribution                       |
 | `get_review_context`       | `read`       | Architecture drift, redundancy, regressions, and hotspots for a time range                      |
+| `enrich_task_context`      | `read`       | One-shot task context: architecture, relevant code, file summaries, blast radius, findings, changes |
 | `register_project`         | `register`   | Register a new project for indexing                                                             |
 | `delete_project`           | `register`   | Delete a project and all its data (irreversible)                                                |
 | `trigger_reindex`          | `index`      | Enqueue a reindex job for specified layers                                                      |

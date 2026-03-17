@@ -167,6 +167,18 @@ ${card("Delete project", `
 <h3 class="text-lg font-bold text-slate-50 mt-8 mb-4">Context Enrichers</h3>
 <p class="text-slate-400 mb-6 text-sm max-w-3xl">Rich, pre-assembled context designed to be injected into LLM prompts. Each endpoint returns structured sections with token counts.</p>
 
+<!-- Task Context (Enrich) -->
+${card("Task context (enrichment)", `
+  <p class="text-sm text-slate-400 mb-1">⭐ <strong class="text-slate-200">Recommended entry point.</strong> One-shot endpoint that assembles everything an agent needs for a task.</p>
+  <p class="text-sm text-slate-400 mb-3">Architecture overview, relevant files with summaries, dependencies, blast radius, findings, and recent changes — all scoped to a natural language query. Prism allocates the token budget automatically via its priority system.</p>
+  ${endpoint("POST", "/api/projects/:owner/:repo/context/enrich", "read")}
+  ${paramTable(
+    param("query", "string", true, "", "Natural language description of the task") +
+    param("maxTokens", "number", false, "16000", "Token budget — priority system allocates it")
+  )}
+  <p class="text-xs text-slate-500 mt-2">Graceful degradation: returns architecture + findings even if semantic layer isn't indexed yet.</p>
+`)}
+
 <!-- File Context -->
 ${card("File context", `
   <p class="text-sm text-slate-400 mb-3">Summary, blast radius, dependencies, exported symbols, and findings for a file.</p>
@@ -276,6 +288,7 @@ ${card("MCP endpoint", `
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_architecture_overview</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">System architecture, module map, critical findings</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_change_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">Commits, change frequency, co-change patterns</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_review_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">Drift review, regressions, hotspots</td></tr>
+        <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">enrich_task_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">One-shot task context: architecture, code, findings, changes</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">register_project</td><td class="py-1.5 pr-3 text-xs text-orange-400">register</td><td class="py-1.5 text-xs text-slate-400">Register a new project for indexing</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">delete_project</td><td class="py-1.5 pr-3 text-xs text-orange-400">register</td><td class="py-1.5 text-xs text-slate-400">Delete a project and all its data</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">trigger_reindex</td><td class="py-1.5 pr-3 text-xs text-blue-400">index</td><td class="py-1.5 text-xs text-slate-400">Enqueue a reindex job</td></tr>

@@ -25,6 +25,8 @@ export {
   type ArchitectureOverviewInput,
   type ChangeContextInput,
   type ReviewContextInput,
+  assembleTaskContext,
+  type TaskContextInput,
 } from "./assembler.js";
 
 export { formatContextAsMarkdown } from "./formatter.js";

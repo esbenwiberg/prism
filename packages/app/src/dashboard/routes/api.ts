@@ -27,6 +27,7 @@ import {
   assembleArchitectureOverview,
   assembleChangeContext,
   assembleReviewContext,
+  assembleTaskContext,
   formatContextAsMarkdown,
 } from "@prism/core";
 import { requireApiKey, requirePermission } from "../../auth/api-key.js";
@@ -364,6 +365,34 @@ apiRouter.post("/api/projects/:owner/:repo/context/review", requireApiKey, requi
     res.json(response);
   } catch (err) {
     logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context review failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/enrich
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/enrich", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { query, maxTokens } = req.body as {
+    query?: string;
+    maxTokens?: number;
+  };
+
+  if (!query || typeof query !== "string") {
+    res.status(400).json({ error: "query must be a non-empty string" });
+    return;
+  }
+
+  try {
+    const response = await assembleTaskContext({ projectId: project.id, query, maxTokens });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "Context enrich failed");
     res.status(500).json({ error: "Context assembly failed" });
   }
 });

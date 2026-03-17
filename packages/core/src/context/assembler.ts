@@ -594,6 +594,169 @@ export async function assembleReviewContext(
 }
 
 // ---------------------------------------------------------------------------
+// enrich_task_context
+// ---------------------------------------------------------------------------
+
+export interface TaskContextInput {
+  projectId: number;
+  query: string;
+  maxTokens?: number;
+}
+
+export async function assembleTaskContext(
+  input: TaskContextInput,
+): Promise<ContextResponse> {
+  const { projectId, query, maxTokens = 16000 } = input;
+
+  // 1. Semantic search — find relevant files/symbols
+  const semanticSignal = await collectSemanticSignal({
+    projectId,
+    query,
+    limit: 20,
+    intent: query,
+  });
+
+  // 2. Extract top file paths from semantic results
+  const topFilePaths = extractTopFilePaths(semanticSignal, 5);
+
+  // 3. Derive the most common module from top file paths
+  const moduleCounts = new Map<string, number>();
+  for (const fp of topFilePaths) {
+    const mod = getTopLevelModule(fp);
+    if (mod) moduleCounts.set(mod, (moduleCounts.get(mod) ?? 0) + 1);
+  }
+  const topModule = [...moduleCounts.entries()]
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  // 4. Resolve file IDs for graph signals (top 3)
+  const allFiles = await getProjectFiles(projectId);
+  const fileByPath = new Map(allFiles.map((f) => [f.path, f]));
+  const top3Files = topFilePaths.slice(0, 3);
+  const top3FileIds = top3Files
+    .map((p) => fileByPath.get(p))
+    .filter((f): f is FileRow => f != null);
+
+  // 5. Fan-out: collect signals in parallel
+  const [archSummaries, fileSummaryMap, criticalFindings, ...graphResults] =
+    await Promise.all([
+      collectArchitectureSummaries(projectId),
+      collectFileSummariesBatch(projectId, topFilePaths),
+      collectCriticalFindings(projectId),
+      ...top3FileIds.map((f) => collectGraphSignal({ projectId, fileId: f.id })),
+    ]);
+
+  // Collect file-scoped findings for top 3 files in parallel
+  const fileFindingsResults = await Promise.all(
+    top3Files.map((fp) => collectFindingsByFilePath(projectId, fp)),
+  );
+
+  // Collect change signals for the most common module (graceful skip)
+  let changeSignals: SignalResult[] = [];
+  if (topModule) {
+    try {
+      changeSignals = await collectChangeSignals({
+        projectId,
+        modulePath: topModule,
+      });
+    } catch {
+      // History tables may not exist — gracefully skip
+    }
+  }
+
+  // 6. Build signals array with priorities
+
+  const signals: SignalResult[] = [];
+
+  // Priority 1: Architecture (purpose + system summary)
+  signals.push(
+    { ...archSummaries.purpose, priority: 1 },
+    { ...archSummaries.system, priority: 1 },
+  );
+
+  // Priority 2: Semantic search results
+  signals.push({
+    ...semanticSignal,
+    heading: "Relevant Code",
+    priority: 2,
+  });
+
+  // Priority 2: File summaries for top hits
+  if (fileSummaryMap.size > 0) {
+    signals.push({
+      heading: "File Summaries",
+      priority: 2,
+      items: topFilePaths
+        .filter((p) => fileSummaryMap.has(p))
+        .map((p) => ({
+          content: `**${p}**\n${fileSummaryMap.get(p)}`,
+          relevance: 0.8,
+        })),
+    });
+  }
+
+  // Priority 3: Blast radius + dependencies (top 3 files)
+  for (let i = 0; i < graphResults.length; i++) {
+    const graph = graphResults[i] as { forward: SignalResult; reverse: SignalResult };
+    const filePath = top3Files[i];
+    if (graph.reverse.items.length > 0) {
+      signals.push({
+        ...graph.reverse,
+        heading: `Blast Radius — ${filePath}`,
+        priority: 3,
+      });
+    }
+    if (graph.forward.items.length > 0) {
+      signals.push({
+        ...graph.forward,
+        heading: `Dependencies — ${filePath}`,
+        priority: 3,
+      });
+    }
+  }
+
+  // Priority 3: Critical + file-scoped findings
+  if (criticalFindings.items.length > 0) {
+    signals.push({ ...criticalFindings, priority: 3 });
+  }
+  for (let i = 0; i < fileFindingsResults.length; i++) {
+    const findings = fileFindingsResults[i];
+    if (findings.items.length > 0) {
+      signals.push({
+        ...findings,
+        heading: `Findings — ${top3Files[i]}`,
+        priority: 3,
+      });
+    }
+  }
+
+  // Priority 4: Recent changes for affected module
+  for (const cs of changeSignals) {
+    signals.push({ ...cs, priority: 4 });
+  }
+
+  // Priority 5: Module map (breadth, nice-to-have)
+  signals.push({ ...archSummaries.modules, priority: 5 });
+
+  const sections = signalsToSections(signals);
+  return truncateSections(sections, maxTokens);
+}
+
+/** Extract unique file paths from semantic signal items. */
+function extractTopFilePaths(signal: SignalResult, limit: number): string[] {
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const item of signal.items) {
+    const path = extractPathFromContent(item.content);
+    if (path && !seen.has(path)) {
+      seen.add(path);
+      paths.push(path);
+      if (paths.length >= limit) break;
+    }
+  }
+  return paths;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
