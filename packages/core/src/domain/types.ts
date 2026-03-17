@@ -25,7 +25,8 @@ export type LayerName =
   | "purpose"
   | "semantic"
   | "analysis"
-  | "blueprint";
+  | "blueprint"
+  | "history";
 
 /** Kind of source-code symbol extracted during structural indexing. */
 export type SymbolKind =

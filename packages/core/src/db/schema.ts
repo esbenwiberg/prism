@@ -75,6 +75,8 @@ export const files = pgTable(
     isConfig: boolean("is_config").notNull().default(false),
     docContent: text("doc_content"),
     metadata: jsonb("metadata"),
+    changeFrequency: integer("change_frequency").default(0),
+    lastChangedAt: timestamp("last_changed_at", { withTimezone: true }),
   },
   (table) => [
     unique("prism_files_project_path").on(table.projectId, table.path),
@@ -324,6 +326,50 @@ export const apiKeys = pgTable("prism_api_keys", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
+
+// ---------------------------------------------------------------------------
+// prism_commits (git history)
+// ---------------------------------------------------------------------------
+export const commits = pgTable(
+  "prism_commits",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sha: text("sha").notNull(),
+    authorName: text("author_name"),
+    authorEmail: text("author_email"),
+    committedAt: timestamp("committed_at", { withTimezone: true }),
+    message: text("message").notNull(),
+    metadata: jsonb("metadata"),
+  },
+  (table) => [
+    unique("prism_commits_project_sha").on(table.projectId, table.sha),
+    index("idx_commits_project_time").on(table.projectId, table.committedAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// prism_commit_files (per-file changes in each commit)
+// ---------------------------------------------------------------------------
+export const commitFiles = pgTable(
+  "prism_commit_files",
+  {
+    id: serial("id").primaryKey(),
+    commitId: integer("commit_id")
+      .notNull()
+      .references(() => commits.id, { onDelete: "cascade" }),
+    fileId: integer("file_id").references(() => files.id, {
+      onDelete: "set null",
+    }),
+    filePath: text("file_path").notNull(),
+    changeType: text("change_type").notNull(),
+    linesAdded: integer("lines_added"),
+    linesRemoved: integer("lines_removed"),
+  },
+  (table) => [index("idx_commit_files_file_id").on(table.fileId)],
+);
 
 // ---------------------------------------------------------------------------
 // prism_jobs

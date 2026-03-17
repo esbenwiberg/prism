@@ -74,6 +74,9 @@ import { runGapAnalysis } from "./analysis/gap-analysis.js";
 // Purpose layer imports
 import { runPurposeAnalysis } from "./purpose/index.js";
 
+// History layer imports
+import { runHistoryLayer } from "./history/index.js";
+
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -535,6 +538,10 @@ export async function runPipeline(
 
         case "analysis":
           result = await executeAnalysisLayer(context);
+          break;
+
+        case "history":
+          result = await executeHistoryLayer(context);
           break;
 
         // Blueprint is a separate command, not part of the index pipeline
@@ -1433,6 +1440,43 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
       filesTotal: filesProcessed,
       durationMs,
       costUsd: totalCostUsd,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await failIndexRun(indexRun.id, errorMessage, 0, Date.now() - startTime);
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// History layer
+// ---------------------------------------------------------------------------
+
+async function executeHistoryLayer(
+  context: IndexContext,
+): Promise<LayerResult> {
+  const { project, fullReindex } = context;
+  const startTime = Date.now();
+
+  const indexRun = await createIndexRun(project.id, "history", 0);
+
+  try {
+    const { commitsProcessed, filesUpdated } = await runHistoryLayer({
+      projectPath: project.path,
+      projectId: project.id,
+      fullReindex,
+    });
+
+    const durationMs = Date.now() - startTime;
+    await completeIndexRun(indexRun.id, commitsProcessed, 0, durationMs);
+
+    return {
+      layer: "history",
+      status: "completed",
+      filesProcessed: commitsProcessed,
+      filesTotal: commitsProcessed,
+      durationMs,
+      costUsd: 0,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

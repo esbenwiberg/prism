@@ -19,6 +19,13 @@ import {
   upsertReindexRequest,
   deleteProject,
   logger,
+  assembleFileContext,
+  assembleModuleContext,
+  assembleRelatedFiles,
+  assembleArchitectureOverview,
+  assembleChangeContext,
+  assembleReviewContext,
+  formatContextAsMarkdown,
 } from "@prism/core";
 import { requireApiKey, requirePermission } from "../../auth/api-key.js";
 
@@ -126,7 +133,7 @@ apiRouter.post("/api/projects/:owner/:repo/reindex", requireApiKey, requirePermi
   }
 
   const layers = rawLayers as string[];
-  const validLayers = new Set(["structural", "semantic"]);
+  const validLayers = new Set(["structural", "semantic", "history"]);
   const invalid = layers.filter((l) => !validLayers.has(l));
   if (invalid.length > 0) {
     res.status(400).json({ error: `Invalid layer(s): ${invalid.join(", ")}` });
@@ -156,4 +163,179 @@ apiRouter.delete("/api/projects/:owner/:repo", requireApiKey, requirePermission(
   logger.info({ slug, projectId: project.id }, "Project deleted via API");
 
   res.json({ deleted: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/file
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/file", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { filePath, intent, maxTokens } = req.body as {
+    filePath?: string;
+    intent?: string;
+    maxTokens?: number;
+  };
+
+  if (!filePath || typeof filePath !== "string") {
+    res.status(400).json({ error: "filePath must be a non-empty string" });
+    return;
+  }
+
+  try {
+    const response = await assembleFileContext({ projectId: project.id, filePath, intent, maxTokens });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, filePath, error: err instanceof Error ? err.message : String(err) }, "Context file failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/module
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/module", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { modulePath, maxTokens } = req.body as {
+    modulePath?: string;
+    maxTokens?: number;
+  };
+
+  if (!modulePath || typeof modulePath !== "string") {
+    res.status(400).json({ error: "modulePath must be a non-empty string" });
+    return;
+  }
+
+  try {
+    const response = await assembleModuleContext({ projectId: project.id, modulePath, maxTokens });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, modulePath, error: err instanceof Error ? err.message : String(err) }, "Context module failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/related
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/related", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { query, maxResults, includeTests } = req.body as {
+    query?: string;
+    maxResults?: number;
+    includeTests?: boolean;
+  };
+
+  if (!query || typeof query !== "string") {
+    res.status(400).json({ error: "query must be a non-empty string" });
+    return;
+  }
+
+  try {
+    const results = await assembleRelatedFiles({ projectId: project.id, query, maxResults, includeTests });
+    res.json({ results });
+  } catch (err) {
+    logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "Context related failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/arch
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/arch", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { maxTokens } = req.body as { maxTokens?: number };
+
+  try {
+    const response = await assembleArchitectureOverview({ projectId: project.id, maxTokens });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context arch failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/changes
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/changes", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { filePath, modulePath, since, until, maxCommits, maxTokens } = req.body as {
+    filePath?: string;
+    modulePath?: string;
+    since?: string;
+    until?: string;
+    maxCommits?: number;
+    maxTokens?: number;
+  };
+
+  try {
+    const response = await assembleChangeContext({
+      projectId: project.id,
+      filePath,
+      modulePath,
+      since,
+      until,
+      maxCommits,
+      maxTokens,
+    });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context changes failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:owner/:repo/context/review
+// ---------------------------------------------------------------------------
+
+apiRouter.post("/api/projects/:owner/:repo/context/review", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+  const project = await getProjectBySlug(slug);
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { since, until, maxTokens } = req.body as {
+    since?: string;
+    until?: string;
+    maxTokens?: number;
+  };
+
+  if (!since || typeof since !== "string") {
+    res.status(400).json({ error: "since must be a non-empty ISO date string" });
+    return;
+  }
+
+  try {
+    const response = await assembleReviewContext({
+      projectId: project.id,
+      since,
+      until,
+      maxTokens,
+    });
+    res.json(response);
+  } catch (err) {
+    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context review failed");
+    res.status(500).json({ error: "Context assembly failed" });
+  }
 });

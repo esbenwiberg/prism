@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { symbols } from "../schema.js";
 import type { SymbolKind } from "../../domain/types.js";
@@ -81,4 +81,17 @@ export async function getSymbolsByProjectId(
 ): Promise<SymbolRow[]> {
   const db = getDb();
   return db.select().from(symbols).where(eq(symbols.projectId, projectId));
+}
+
+/**
+ * Get exported symbols for a given file.
+ */
+export async function getExportedSymbolsByFileId(
+  fileId: number,
+): Promise<SymbolRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(symbols)
+    .where(and(eq(symbols.fileId, fileId), eq(symbols.exported, true)));
 }

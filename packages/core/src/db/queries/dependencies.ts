@@ -91,3 +91,17 @@ export async function getDependenciesBySourceFileId(
     .from(dependencies)
     .where(eq(dependencies.sourceFileId, sourceFileId));
 }
+
+/**
+ * Get all dependency edges where the given file is the target.
+ * (Reverse lookup — "who imports me?" — critical for blast radius.)
+ */
+export async function getDependenciesByTargetFileId(
+  targetFileId: number,
+): Promise<DependencyRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(dependencies)
+    .where(eq(dependencies.targetFileId, targetFileId));
+}
