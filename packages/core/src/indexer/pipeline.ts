@@ -799,7 +799,29 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
     config.structural.maxFileSizeBytes,
   );
 
-  const totalFiles = allFiles.length;
+  // 1. Parse documentation files (README, CHANGELOG, etc.)
+  const readmeResults = parseDocFiles(allFiles);
+  logger.info(
+    { docFiles: readmeResults.length },
+    "Parsed documentation files",
+  );
+
+  // 2. Parse config files
+  const configInfos = parseConfigFiles(allFiles);
+  logger.info(
+    { configFiles: configInfos.length },
+    "Parsed config files",
+  );
+
+  // 3. Extract inline comments from source files
+  const commentResults = extractCommentsFromFiles(allFiles);
+  logger.info(
+    { sourceFiles: commentResults.length },
+    "Extracted inline comments",
+  );
+
+  // Total = files actually examined by the docs layer (docs + configs + source)
+  const totalFiles = readmeResults.length + configInfos.length + commentResults.length;
 
   // Create index run for docs layer
   const indexRun = await createIndexRun(project.id, "docs", totalFiles);
@@ -807,25 +829,11 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
   try {
     let filesProcessed = 0;
 
-    // 1. Parse documentation files (README, CHANGELOG, etc.)
-    const readmeResults = parseDocFiles(allFiles);
-    logger.info(
-      { docFiles: readmeResults.length },
-      "Parsed documentation files",
-    );
-
     // Update doc_content for each documentation file
     for (const result of readmeResults) {
       await updateFileDocContent(project.id, result.filePath, result.summary);
       filesProcessed++;
     }
-
-    // 2. Parse config files
-    const configInfos = parseConfigFiles(allFiles);
-    logger.info(
-      { configFiles: configInfos.length },
-      "Parsed config files",
-    );
 
     // Update doc_content for each config file
     for (const info of configInfos) {
@@ -834,19 +842,12 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
       filesProcessed++;
     }
 
-    // 3. Extract inline comments from source files
-    const commentResults = extractCommentsFromFiles(allFiles);
-    logger.info(
-      { sourceFiles: commentResults.length },
-      "Extracted inline comments",
-    );
-
     // Update doc_content for source files that have meaningful comments
     for (const result of commentResults) {
       if (result.docContent.length > 0) {
         await updateFileDocContent(project.id, result.filePath, result.docContent);
-        filesProcessed++;
       }
+      filesProcessed++;
     }
 
     // 4. Build tech stack info

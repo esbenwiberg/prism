@@ -77,12 +77,20 @@ function layerRow(layer: string, run: IndexRunRow | undefined, isActive: boolean
   const label = LAYER_LABELS[layer] ?? layer;
 
   if (!run) {
-    // Not started yet
+    // Not started yet — show a Run button if no job is active and this isn't blueprint
+    const runBtn = !isActive && projectId != null && layer !== "blueprint"
+      ? `<button hx-post="/projects/${projectId}/run-layer"
+                 hx-vals='${escapeHtml(JSON.stringify({ layer }))}'
+                 hx-target="#job-progress"
+                 hx-swap="outerHTML"
+                 class="ml-auto text-xs rounded border border-slate-600 px-2 py-0.5 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors">Run</button>`
+      : "";
     return `
   <div class="flex items-center gap-3 py-2">
     <div class="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0"></div>
     <span class="text-sm text-slate-500 w-24">${escapeHtml(label)}</span>
     <span class="text-xs text-slate-600">—</span>
+    ${runBtn}
   </div>`;
   }
 
