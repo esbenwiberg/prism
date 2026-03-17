@@ -18,6 +18,7 @@ export {
   fileNeedsReindex,
   getFileByPath,
   getProjectFiles,
+  getFilesByDirectory,
   deleteFilesByPaths,
   bulkUpsertFiles,
   updateFileDocContent,
@@ -31,6 +32,7 @@ export {
   deleteSymbolsByProjectId,
   getSymbolsByFileId,
   getSymbolsByProjectId,
+  getExportedSymbolsByFileId,
   type InsertSymbolInput,
   type SymbolRow,
 } from "./symbols.js";
@@ -41,6 +43,7 @@ export {
   deleteDependenciesByProjectId,
   getDependenciesByProjectId,
   getDependenciesBySourceFileId,
+  getDependenciesByTargetFileId,
   type InsertDependencyInput,
   type DependencyRow,
 } from "./dependencies.js";
@@ -164,6 +167,24 @@ export {
   type ReindexRequestRow,
   type ReindexRequestWithProject,
 } from "./reindex-requests.js";
+
+export {
+  bulkInsertCommits,
+  bulkInsertCommitFiles,
+  getRecentCommitsByProjectId,
+  getRecentCommitsByFileId,
+  getRecentCommitsByDateRange,
+  getCommitFilesByCommitId,
+  getCoChangedFiles,
+  getChangeHotspots,
+  getCommitsWithFileDetails,
+  deleteCommitsByProjectId,
+  type InsertCommitInput,
+  type InsertCommitFileInput,
+  type CommitRow,
+  type CommitFileRow,
+  type CommitWithFiles,
+} from "./commits.js";
 
 export {
   createApiKey,

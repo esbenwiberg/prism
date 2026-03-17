@@ -37,6 +37,13 @@ import {
   getLastCompletedIndexTime,
   getProjectFiles,
   logger,
+  assembleFileContext,
+  assembleModuleContext,
+  assembleRelatedFiles,
+  assembleArchitectureOverview,
+  assembleChangeContext,
+  assembleReviewContext,
+  formatContextAsMarkdown,
 } from "@prism/core";
 import { requireApiKey } from "../../auth/api-key.js";
 
@@ -186,7 +193,7 @@ function createMcpServer(permissions: string[]): Server {
             layers: {
               type: "array",
               items: { type: "string" },
-              description: 'Layers to reindex (default: ["structural"]). Valid: "structural", "semantic".',
+              description: 'Layers to reindex (default: ["structural"]). Valid: "structural", "semantic", "history".',
             },
           },
           required: ["slug"],
@@ -202,6 +209,146 @@ function createMcpServer(permissions: string[]): Server {
             slug: slugParam,
           },
           required: ["slug"],
+        },
+      },
+      {
+        name: "get_file_context",
+        description:
+          "Get rich context for a file: summary, blast radius (who depends on it), dependencies, exported symbols, and findings. Use before modifying a file.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            filePath: {
+              type: "string",
+              description: "Project-relative file path",
+            },
+            intent: {
+              type: "string",
+              description: "What you plan to do (e.g. 'add retry mechanism') — boosts relevant context",
+            },
+            maxTokens: {
+              type: "number",
+              description: "Token budget for response (default: 4000)",
+            },
+          },
+          required: ["slug", "filePath"],
+        },
+      },
+      {
+        name: "get_module_context",
+        description:
+          "Get a module's role, files, external dependencies, public API, and findings. Use to understand a directory/module before working in it.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            modulePath: {
+              type: "string",
+              description: "Module directory path (e.g. 'src/db/queries')",
+            },
+            maxTokens: {
+              type: "number",
+              description: "Token budget for response (default: 3000)",
+            },
+          },
+          required: ["slug", "modulePath"],
+        },
+      },
+      {
+        name: "get_related_files",
+        description:
+          "Find files related to a query or file path via semantic similarity and dependency graph. Returns ranked list with scores and relationship types.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            query: {
+              type: "string",
+              description: "Natural language query or file path to find related files for",
+            },
+            maxResults: {
+              type: "number",
+              description: "Maximum results to return (default: 15)",
+            },
+            includeTests: {
+              type: "boolean",
+              description: "Include test files in results (default: false)",
+            },
+          },
+          required: ["slug", "query"],
+        },
+      },
+      {
+        name: "get_architecture_overview",
+        description:
+          "Get the high-level architecture: purpose, system summary, module map, inter-module dependencies, and critical findings.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            maxTokens: {
+              type: "number",
+              description: "Token budget for response (default: 5000)",
+            },
+          },
+          required: ["slug"],
+        },
+      },
+      {
+        name: "get_change_context",
+        description:
+          "What changed recently and why? Recent commits, change frequency, co-change patterns, and author distribution. Scope by file, module, or date range.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            filePath: {
+              type: "string",
+              description: "Scope to a specific file (optional)",
+            },
+            modulePath: {
+              type: "string",
+              description: "Scope to a module/directory (optional)",
+            },
+            since: {
+              type: "string",
+              description: "Start date ISO format (optional, e.g. '2026-03-01')",
+            },
+            until: {
+              type: "string",
+              description: "End date ISO format (optional, defaults to now)",
+            },
+            maxCommits: {
+              type: "number",
+              description: "Maximum commits to return (default: 20)",
+            },
+          },
+          required: ["slug"],
+        },
+      },
+      {
+        name: "get_review_context",
+        description:
+          "Review recent changes for architecture drift, redundancy, and regressions. Returns change summary, hotspots, drift findings, co-change clusters, and architecture baseline for comparison.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            slug: slugParam,
+            since: {
+              type: "string",
+              description: "Start date ISO format (e.g. '2026-03-10')",
+            },
+            until: {
+              type: "string",
+              description: "End date ISO format (optional, defaults to now)",
+            },
+            maxTokens: {
+              type: "number",
+              description: "Token budget for response (default: 8000)",
+            },
+          },
+          required: ["slug", "since"],
         },
       },
     ],
@@ -327,11 +474,11 @@ function createMcpServer(permissions: string[]): Server {
       }
 
       const rawLayers = (args.layers as string[] | undefined) ?? ["structural"];
-      const validLayers = new Set(["structural", "semantic"]);
+      const validLayers = new Set(["structural", "semantic", "history"]);
       const invalid = rawLayers.filter((l) => !validLayers.has(l));
       if (invalid.length > 0) {
         return {
-          content: [{ type: "text" as const, text: `Invalid layer(s): ${invalid.join(", ")}. Valid layers: structural, semantic.` }],
+          content: [{ type: "text" as const, text: `Invalid layer(s): ${invalid.join(", ")}. Valid layers: structural, semantic, history.` }],
         };
       }
 
@@ -374,6 +521,216 @@ function createMcpServer(permissions: string[]): Server {
       ];
 
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+
+    // -----------------------------------------------------------------------
+    // get_file_context
+    // -----------------------------------------------------------------------
+    if (toolName === "get_file_context") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, filePath, intent, maxTokens } = args as {
+        slug: string;
+        filePath: string;
+        intent?: string;
+        maxTokens?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleFileContext({
+          projectId: project.id,
+          filePath,
+          intent,
+          maxTokens,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, filePath, error: err instanceof Error ? err.message : String(err) }, "get_file_context failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // get_module_context
+    // -----------------------------------------------------------------------
+    if (toolName === "get_module_context") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, modulePath, maxTokens } = args as {
+        slug: string;
+        modulePath: string;
+        maxTokens?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleModuleContext({
+          projectId: project.id,
+          modulePath,
+          maxTokens,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, modulePath, error: err instanceof Error ? err.message : String(err) }, "get_module_context failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // get_related_files
+    // -----------------------------------------------------------------------
+    if (toolName === "get_related_files") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, query, maxResults, includeTests } = args as {
+        slug: string;
+        query: string;
+        maxResults?: number;
+        includeTests?: boolean;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const results = await assembleRelatedFiles({
+          projectId: project.id,
+          query,
+          maxResults,
+          includeTests,
+        });
+
+        const lines = [`## Related Files for "${query}" (${slug})`, ""];
+        for (const r of results) {
+          lines.push(`**${r.path}** [score: ${r.score.toFixed(2)}, ${r.relationship}]`);
+          if (r.summary) lines.push(r.summary);
+          lines.push("");
+        }
+        if (results.length === 0) lines.push("No related files found.");
+
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      } catch (err) {
+        logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "get_related_files failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // get_change_context
+    // -----------------------------------------------------------------------
+    if (toolName === "get_change_context") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, filePath, modulePath, since, until, maxCommits } = args as {
+        slug: string;
+        filePath?: string;
+        modulePath?: string;
+        since?: string;
+        until?: string;
+        maxCommits?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleChangeContext({
+          projectId: project.id,
+          filePath,
+          modulePath,
+          since,
+          until,
+          maxCommits,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "get_change_context failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // get_review_context
+    // -----------------------------------------------------------------------
+    if (toolName === "get_review_context") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, since, until, maxTokens } = args as {
+        slug: string;
+        since: string;
+        until?: string;
+        maxTokens?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleReviewContext({
+          projectId: project.id,
+          since,
+          until,
+          maxTokens,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "get_review_context failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // get_architecture_overview
+    // -----------------------------------------------------------------------
+    if (toolName === "get_architecture_overview") {
+      const denied = permissionError("read");
+      if (denied) return denied;
+
+      const { slug, maxTokens } = args as {
+        slug: string;
+        maxTokens?: number;
+      };
+
+      const project = await getProjectBySlug(slug);
+      if (!project) {
+        return { content: [{ type: "text" as const, text: `Project "${slug}" not found in Prism.` }] };
+      }
+
+      try {
+        const response = await assembleArchitectureOverview({
+          projectId: project.id,
+          maxTokens,
+        });
+        const text = formatContextAsMarkdown(response);
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "get_architecture_overview failed");
+        return { content: [{ type: "text" as const, text: `Failed: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
     }
 
     throw new Error(`Unknown tool: ${toolName}`);

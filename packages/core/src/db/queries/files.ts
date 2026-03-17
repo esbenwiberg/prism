@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { files } from "../schema.js";
 
@@ -163,6 +163,23 @@ export async function bulkUpsertFiles(
     results.push(await upsertFile(input));
   }
   return results;
+}
+
+/**
+ * Get all files in a directory (by path prefix).
+ */
+export async function getFilesByDirectory(
+  projectId: number,
+  dirPrefix: string,
+): Promise<FileRow[]> {
+  const db = getDb();
+  const prefix = dirPrefix.endsWith("/") ? dirPrefix : `${dirPrefix}/`;
+  return db
+    .select()
+    .from(files)
+    .where(
+      and(eq(files.projectId, projectId), like(files.path, `${prefix}%`)),
+    );
 }
 
 /**

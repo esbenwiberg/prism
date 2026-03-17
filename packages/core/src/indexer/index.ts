@@ -152,3 +152,10 @@ export {
   OpenAIProvider,
   type EmbeddingProvider,
 } from "./semantic/embedder.js";
+
+// History sub-module
+export {
+  runHistoryLayer,
+  parseGitLog,
+  type HistoryLayerOptions,
+} from "./history/index.js";
