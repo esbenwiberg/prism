@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { summaries } from "../schema.js";
 
@@ -121,6 +121,48 @@ export async function deleteSummariesByProjectId(
   await db
     .delete(summaries)
     .where(eq(summaries.projectId, projectId));
+}
+
+/**
+ * Get all summaries for a project+level as a Map keyed by targetId.
+ *
+ * Used by the incremental analysis layer to look up existing summaries
+ * for reuse / hash comparison without fetching them one at a time.
+ */
+export async function getSummariesByLevelAsMap(
+  projectId: number,
+  level: string,
+): Promise<Map<string, SummaryRow>> {
+  const rows = await getSummariesByLevel(projectId, level);
+  const map = new Map<string, SummaryRow>();
+  for (const row of rows) {
+    map.set(row.targetId, row);
+  }
+  return map;
+}
+
+/**
+ * Delete summaries for specific targets within a project+level.
+ *
+ * Used to clean up stale summaries before re-inserting dirty items
+ * during incremental analysis.
+ */
+export async function deleteSummariesByTargets(
+  projectId: number,
+  level: string,
+  targetIds: string[],
+): Promise<void> {
+  if (targetIds.length === 0) return;
+  const db = getDb();
+  await db
+    .delete(summaries)
+    .where(
+      and(
+        eq(summaries.projectId, projectId),
+        eq(summaries.level, level),
+        inArray(summaries.targetId, targetIds),
+      ),
+    );
 }
 
 /**

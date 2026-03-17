@@ -4,6 +4,9 @@
  * Summarise files from symbol summaries, modules from file summaries,
  * and the whole system from module summaries. Each level calls Claude
  * Sonnet with the lower-level summaries as input.
+ *
+ * Supports incremental rollup via dirty-flag propagation: only files/modules
+ * that changed (or whose input hash changed) get re-summarised.
  */
 
 import { createHash } from "node:crypto";
@@ -14,7 +17,33 @@ import { createAnthropicClient } from "../../llm/client.js";
 import type { BudgetTracker } from "../types.js";
 import type { AnalysisConfig } from "../../domain/types.js";
 import type { SummaryRow } from "../../db/queries/summaries.js";
-import { bulkInsertSummaries } from "../../db/queries/summaries.js";
+import {
+  bulkInsertSummaries,
+  deleteSummariesByTargets,
+} from "../../db/queries/summaries.js";
+
+// ---------------------------------------------------------------------------
+// Result types for incremental rollup
+// ---------------------------------------------------------------------------
+
+export interface FileRollupResult {
+  /** All file-level summaries (reused + freshly generated). */
+  results: SummaryRow[];
+  /** File paths that actually got a new/updated summary (dirty propagation). */
+  dirtyFilePaths: Set<string>;
+}
+
+export interface ModuleRollupResult {
+  /** All module-level summaries (reused + freshly generated). */
+  results: SummaryRow[];
+  /** Module paths that actually got a new/updated summary. */
+  dirtyModulePaths: Set<string>;
+}
+
+export interface SystemRollupResult {
+  summary: SummaryRow | null;
+  changed: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -78,15 +107,10 @@ function computeCost(inputTokens: number, outputTokens: number): number {
 /**
  * Summarise files by aggregating their symbol-level summaries.
  *
- * Groups function-level summaries by file, then calls Claude Sonnet
- * to produce a file-level summary for each file.
- *
- * @param projectId       — The project ID.
- * @param symbolSummaries — All function-level summaries for the project.
- * @param filePathMap     — Map from targetId prefix (filePath) to language.
- * @param config          — Analysis configuration.
- * @param budget          — Budget tracker.
- * @returns The new file-level summary rows inserted.
+ * When `dirtyFiles` is provided, only files in that set are re-summarised.
+ * Clean files reuse their existing summary. An input-hash check provides a
+ * secondary safety net even for dirty files — if the prompt hasn't changed,
+ * the existing summary is reused.
  */
 export async function rollupFileSummaries(
   projectId: number,
@@ -95,7 +119,9 @@ export async function rollupFileSummaries(
   config: AnalysisConfig,
   budget: BudgetTracker,
   onProgress?: (filesProcessed: number) => void,
-): Promise<SummaryRow[]> {
+  dirtyFiles?: Set<string>,
+  existingSummaries?: Map<string, SummaryRow>,
+): Promise<FileRollupResult> {
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-file.md");
 
@@ -113,16 +139,31 @@ export async function rollupFileSummaries(
   }
 
   const results: SummaryRow[] = [];
+  const dirtyFilePaths = new Set<string>();
+  let processedCount = 0;
 
-  for (const [filePath, summaries] of byFile) {
+  for (const [filePath, fileFnSummaries] of byFile) {
     if (budget.exceeded) {
       logger.warn("Budget exceeded — stopping file rollup");
       break;
     }
 
-    const fileInfo = filePathMap.get(filePath) ?? { language: "unknown", symbolCount: summaries.length };
+    const targetId = `file:${filePath}`;
+    const existingRow = existingSummaries?.get(targetId);
 
-    const symbolSummariesText = summaries
+    // Skip clean files — if dirtyFiles is defined and this file isn't in it,
+    // AND we have an existing summary, just reuse it.
+    if (dirtyFiles !== undefined && !dirtyFiles.has(filePath) && existingRow) {
+      results.push(existingRow);
+      processedCount++;
+      onProgress?.(processedCount);
+      logger.debug({ filePath }, "Reusing existing file summary (clean file)");
+      continue;
+    }
+
+    const fileInfo = filePathMap.get(filePath) ?? { language: "unknown", symbolCount: fileFnSummaries.length };
+
+    const symbolSummariesText = fileFnSummaries
       .map((s) => `- ${s.targetId}: ${s.content}`)
       .join("\n");
 
@@ -137,7 +178,20 @@ export async function rollupFileSummaries(
       prompt = `Summarise the following file based on its symbol summaries:\n\nFile: ${filePath}\n\n${symbolSummariesText}`;
     }
 
+    // Input hash safety net — if the prompt is identical, skip the LLM call
+    const inputHash = createHash("sha256").update(prompt).digest("hex");
+    if (existingRow?.inputHash === inputHash) {
+      results.push(existingRow);
+      processedCount++;
+      onProgress?.(processedCount);
+      logger.debug({ filePath }, "Reusing existing file summary (hash match)");
+      continue;
+    }
+
     try {
+      // Delete old summary before inserting new one
+      await deleteSummariesByTargets(projectId, "file", [targetId]);
+
       const response = await client.messages.create({
         model: config.model,
         max_tokens: 500,
@@ -152,12 +206,10 @@ export async function rollupFileSummaries(
       );
       budget.record(costUsd);
 
-      const inputHash = createHash("sha256").update(prompt).digest("hex");
-
       const inserted = await bulkInsertSummaries([{
         projectId,
         level: "file",
-        targetId: `file:${filePath}`,
+        targetId,
         content,
         model: config.model,
         inputHash,
@@ -165,7 +217,9 @@ export async function rollupFileSummaries(
       }]);
 
       results.push(...inserted);
-      onProgress?.(results.length);
+      dirtyFilePaths.add(filePath);
+      processedCount++;
+      onProgress?.(processedCount);
 
       logger.debug(
         { filePath, costUsd: costUsd.toFixed(4) },
@@ -179,7 +233,7 @@ export async function rollupFileSummaries(
     }
   }
 
-  return results;
+  return { results, dirtyFilePaths };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,15 +243,16 @@ export async function rollupFileSummaries(
 /**
  * Summarise modules (directories) by aggregating file-level summaries.
  *
- * Groups file summaries by their parent directory, then calls Claude
- * Sonnet to produce a module-level summary.
+ * When `dirtyModules` is provided, only modules in that set are re-summarised.
  */
 export async function rollupModuleSummaries(
   projectId: number,
   fileSummaries: SummaryRow[],
   config: AnalysisConfig,
   budget: BudgetTracker,
-): Promise<SummaryRow[]> {
+  dirtyModules?: Set<string>,
+  existingSummaries?: Map<string, SummaryRow>,
+): Promise<ModuleRollupResult> {
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-module.md");
 
@@ -215,27 +270,49 @@ export async function rollupModuleSummaries(
   }
 
   const results: SummaryRow[] = [];
+  const dirtyModulePaths = new Set<string>();
 
-  for (const [modulePath, summaries] of byModule) {
+  for (const [modulePath, modFileSummaries] of byModule) {
     if (budget.exceeded) {
       logger.warn("Budget exceeded — stopping module rollup");
       break;
     }
 
-    const fileSummariesText = summaries
+    const targetId = `module:${modulePath}`;
+    const existingRow = existingSummaries?.get(targetId);
+
+    // Skip clean modules
+    if (dirtyModules !== undefined && !dirtyModules.has(modulePath) && existingRow) {
+      results.push(existingRow);
+      logger.debug({ modulePath }, "Reusing existing module summary (clean module)");
+      continue;
+    }
+
+    const fileSummariesText = modFileSummaries
       .map((s) => `- ${s.targetId}: ${s.content}`)
       .join("\n");
 
     let prompt = template
       .replace(/\{\{modulePath\}\}/g, modulePath)
-      .replace(/\{\{fileCount\}\}/g, String(summaries.length))
+      .replace(/\{\{fileCount\}\}/g, String(modFileSummaries.length))
       .replace(/\{\{fileSummaries\}\}/g, fileSummariesText);
 
     if (!prompt.trim()) {
       prompt = `Summarise the following module based on its file summaries:\n\nModule: ${modulePath}\n\n${fileSummariesText}`;
     }
 
+    // Input hash safety net
+    const inputHash = createHash("sha256").update(prompt).digest("hex");
+    if (existingRow?.inputHash === inputHash) {
+      results.push(existingRow);
+      logger.debug({ modulePath }, "Reusing existing module summary (hash match)");
+      continue;
+    }
+
     try {
+      // Delete old summary before inserting new one
+      await deleteSummariesByTargets(projectId, "module", [targetId]);
+
       const response = await client.messages.create({
         model: config.model,
         max_tokens: 600,
@@ -250,12 +327,10 @@ export async function rollupModuleSummaries(
       );
       budget.record(costUsd);
 
-      const inputHash = createHash("sha256").update(prompt).digest("hex");
-
       const inserted = await bulkInsertSummaries([{
         projectId,
         level: "module",
-        targetId: `module:${modulePath}`,
+        targetId,
         content,
         model: config.model,
         inputHash,
@@ -263,6 +338,7 @@ export async function rollupModuleSummaries(
       }]);
 
       results.push(...inserted);
+      dirtyModulePaths.add(modulePath);
 
       logger.debug(
         { modulePath, costUsd: costUsd.toFixed(4) },
@@ -276,7 +352,7 @@ export async function rollupModuleSummaries(
     }
   }
 
-  return results;
+  return { results, dirtyModulePaths };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +361,8 @@ export async function rollupModuleSummaries(
 
 /**
  * Summarise the entire system by aggregating module-level summaries.
+ *
+ * When `forceRegenerate` is false and an existing summary exists, it is reused.
  */
 export async function rollupSystemSummary(
   projectId: number,
@@ -292,10 +370,18 @@ export async function rollupSystemSummary(
   moduleSummaries: SummaryRow[],
   config: AnalysisConfig,
   budget: BudgetTracker,
-): Promise<SummaryRow | null> {
+  forceRegenerate?: boolean,
+  existingSummary?: SummaryRow,
+): Promise<SystemRollupResult> {
   if (budget.exceeded) {
     logger.warn("Budget exceeded — skipping system summary");
-    return null;
+    return { summary: existingSummary ?? null, changed: false };
+  }
+
+  // If not forced and we have an existing summary, reuse it
+  if (!forceRegenerate && existingSummary) {
+    logger.info({ projectName }, "Reusing existing system summary (no dirty modules)");
+    return { summary: existingSummary, changed: false };
   }
 
   const client = createAnthropicClient();
@@ -314,7 +400,17 @@ export async function rollupSystemSummary(
     prompt = `Summarise the following system based on its module summaries:\n\nProject: ${projectName}\n\n${moduleSummariesText}`;
   }
 
+  // Input hash safety net
+  const inputHash = createHash("sha256").update(prompt).digest("hex");
+  if (existingSummary?.inputHash === inputHash) {
+    logger.info({ projectName }, "Reusing existing system summary (hash match)");
+    return { summary: existingSummary, changed: false };
+  }
+
   try {
+    const targetId = `system:${projectName}`;
+    await deleteSummariesByTargets(projectId, "system", [targetId]);
+
     const response = await client.messages.create({
       model: config.model,
       max_tokens: 800,
@@ -329,12 +425,10 @@ export async function rollupSystemSummary(
     );
     budget.record(costUsd);
 
-    const inputHash = createHash("sha256").update(prompt).digest("hex");
-
     const inserted = await bulkInsertSummaries([{
       projectId,
       level: "system",
-      targetId: `system:${projectName}`,
+      targetId,
       content,
       model: config.model,
       inputHash,
@@ -346,12 +440,12 @@ export async function rollupSystemSummary(
       "System summary generated",
     );
 
-    return inserted[0] ?? null;
+    return { summary: inserted[0] ?? null, changed: true };
   } catch (err) {
     logger.error(
       { projectName, error: err instanceof Error ? err.message : String(err) },
       "Failed to generate system summary",
     );
-    return null;
+    return { summary: existingSummary ?? null, changed: false };
   }
 }

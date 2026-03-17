@@ -130,18 +130,24 @@ export const dependencies = pgTable("prism_dependencies", {
 // ---------------------------------------------------------------------------
 // prism_summaries
 // ---------------------------------------------------------------------------
-export const summaries = pgTable("prism_summaries", {
-  id: serial("id").primaryKey(),
-  projectId: integer("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  level: text("level").notNull(),
-  targetId: text("target_id").notNull(),
-  content: text("content").notNull(),
-  model: text("model"),
-  inputHash: text("input_hash"),
-  costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
-});
+export const summaries = pgTable(
+  "prism_summaries",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    level: text("level").notNull(),
+    targetId: text("target_id").notNull(),
+    content: text("content").notNull(),
+    model: text("model"),
+    inputHash: text("input_hash"),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+  },
+  (table) => [
+    unique("prism_summaries_project_level_target").on(table.projectId, table.level, table.targetId),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // prism_embeddings
