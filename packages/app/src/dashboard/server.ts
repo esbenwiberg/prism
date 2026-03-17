@@ -36,6 +36,7 @@ import { apiRouter } from "./routes/api.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 import { getStartedRouter } from "./routes/get-started.js";
+import { apiDocsRouter } from "./routes/api-docs.js";
 import { historyRouter } from "./routes/history.js";
 import { contextExplorerRouter } from "./routes/context-explorer.js";
 
@@ -190,6 +191,7 @@ export function createApp(): express.Express {
   app.use(historyRouter);
   app.use(contextExplorerRouter);
   app.use(getStartedRouter);
+  app.use(apiDocsRouter);
 
   // ---------------------------------------------------------------------------
   // Global error handler — catch-all for unhandled route errors
