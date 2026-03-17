@@ -119,6 +119,7 @@ export interface DashboardConfig {
 
 export interface ApiKeysConfig {
   anthropicApiKey: string;
+  anthropicBaseUrl: string;
   azureOpenaiApiKey: string;
   azureOpenaiEndpoint: string;
   voyageApiKey: string;

@@ -23,9 +23,9 @@ function tabButton(label: string, tab: SettingsTab, active: SettingsTab): string
 
 function settingsTabs(active: SettingsTab): string {
   return `<div class="flex gap-1 border-b border-slate-700">
-  ${tabButton("Analysis", "analysis", active)}
+  ${tabButton("Providers", "apikeys", active)}
+  ${tabButton("Budgets", "analysis", active)}
   ${tabButton("Indexer", "indexer", active)}
-  ${tabButton("API Keys", "apikeys", active)}
   ${tabButton("Dashboard", "dashboard", active)}
 </div>`;
 }
@@ -47,42 +47,24 @@ const EMBEDDING_PROVIDER_OPTIONS = [
   { value: "azure-openai", label: "Azure OpenAI" },
 ];
 
-const MODEL_OPTIONS = [
-  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (fast)" },
-  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
-  { value: "claude-opus-4-6", label: "Opus 4.6 (powerful)" },
-];
-
 export function analysisTabPartial(config: PrismConfig): string {
   return `<form hx-post="/settings/analysis" hx-target="#settings-content" hx-swap="innerHTML">
   <div class="space-y-6">
-    <p class="text-sm text-slate-400">Configure AI models and spending budgets for each pipeline stage.</p>
+    <p class="text-sm text-slate-400">Configure spending budgets for each pipeline stage. Models and providers are configured in the API Keys tab.</p>
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       ${card("Semantic", `
         <div class="space-y-3">
-          ${select("semantic_model", "Model", MODEL_OPTIONS, config.semantic.model)}
           ${input("semantic_budgetUsd", "Budget (USD)", {
             type: "number",
             value: String(config.semantic.budgetUsd),
             placeholder: "10.00",
-          })}
-          ${select("semantic_embeddingProvider", "Embedding Provider", EMBEDDING_PROVIDER_OPTIONS, config.semantic.embeddingProvider)}
-          ${input("semantic_embeddingModel", "Embedding Model", {
-            value: config.semantic.embeddingModel,
-            placeholder: "voyage-code-3",
-          })}
-          ${input("semantic_embeddingDimensions", "Embedding Dimensions", {
-            type: "number",
-            value: String(config.semantic.embeddingDimensions),
-            placeholder: "3072",
           })}
         </div>
       `)}
 
       ${card("Analysis", `
         <div class="space-y-3">
-          ${select("analysis_model", "Model", MODEL_OPTIONS, config.analysis.model)}
           ${input("analysis_budgetUsd", "Budget (USD)", {
             type: "number",
             value: String(config.analysis.budgetUsd),
@@ -93,7 +75,6 @@ export function analysisTabPartial(config: PrismConfig): string {
 
       ${card("Blueprint", `
         <div class="space-y-3">
-          ${select("blueprint_model", "Model", MODEL_OPTIONS, config.blueprint.model)}
           ${input("blueprint_budgetUsd", "Budget (USD)", {
             type: "number",
             value: String(config.blueprint.budgetUsd),
@@ -103,8 +84,16 @@ export function analysisTabPartial(config: PrismConfig): string {
       `)}
     </div>
 
+    <!-- Preserve model values so they don't get cleared -->
+    <input type="hidden" name="semantic_model" value="${escapeHtml(config.semantic.model)}" />
+    <input type="hidden" name="semantic_embeddingProvider" value="${escapeHtml(config.semantic.embeddingProvider)}" />
+    <input type="hidden" name="semantic_embeddingModel" value="${escapeHtml(config.semantic.embeddingModel)}" />
+    <input type="hidden" name="semantic_embeddingDimensions" value="${String(config.semantic.embeddingDimensions)}" />
+    <input type="hidden" name="analysis_model" value="${escapeHtml(config.analysis.model)}" />
+    <input type="hidden" name="blueprint_model" value="${escapeHtml(config.blueprint.model)}" />
+
     <div class="flex justify-end">
-      ${button("Save Analysis Settings", { variant: "primary", attrs: 'type="submit"' })}
+      ${button("Save Budgets", { variant: "primary", attrs: 'type="submit"' })}
     </div>
   </div>
 </form>`;
@@ -169,59 +158,108 @@ function maskKey(value: string): string {
 
 export function apiKeysTabPartial(config: PrismConfig): string {
   const keys = config.apiKeys;
+  const llmProvider = keys.anthropicBaseUrl ? "azure-foundry" : "anthropic";
+  const embeddingProvider = config.semantic.embeddingProvider;
+
+  const LLM_PROVIDER_OPTIONS = [
+    { value: "anthropic", label: "Anthropic (Direct)" },
+    { value: "azure-foundry", label: "Azure AI Foundry" },
+  ];
 
   return `<form hx-post="/settings/apikeys" hx-target="#settings-content" hx-swap="innerHTML">
   <div class="space-y-6">
-    <p class="text-sm text-slate-400">Configure API keys for AI providers. Keys are stored in the database and take precedence over environment variables.</p>
+    <p class="text-sm text-slate-400">Configure providers, credentials, and models. Keys are stored encrypted in the database.</p>
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      ${card("Anthropic", `
+      ${card("LLM - Summarization, Analysis & Blueprints", `
         <div class="space-y-3">
+          ${select("llmProvider", "Provider", LLM_PROVIDER_OPTIONS, llmProvider,
+            'hx-get="/settings/tab?tab=apikeys" hx-target="#settings-panel" hx-swap="innerHTML" hx-include="closest form"')}
+          ${llmProvider === "azure-foundry" ? `
+            ${input("anthropicBaseUrl", "Foundry Endpoint", {
+              value: keys.anthropicBaseUrl ? maskKey(keys.anthropicBaseUrl) : "",
+              placeholder: "https://your-resource.services.ai.azure.com/api",
+            })}
+          ` : ""}
           ${input("anthropicApiKey", "API Key", {
             type: "password",
             value: maskKey(keys.anthropicApiKey),
-            placeholder: "Set via ANTHROPIC_API_KEY env var",
+            placeholder: llmProvider === "azure-foundry" ? "Azure AI Foundry API key" : "Set via ANTHROPIC_API_KEY env var",
+          })}
+          <hr class="border-slate-700" />
+          ${input("semantic_model", "Semantic Model", {
+            value: config.semantic.model,
+            placeholder: llmProvider === "azure-foundry" ? "Deployment name in Foundry" : "claude-haiku-4-5-20251001",
+          })}
+          ${input("analysis_model", "Analysis Model", {
+            value: config.analysis.model,
+            placeholder: llmProvider === "azure-foundry" ? "Deployment name in Foundry" : "claude-sonnet-4-6",
+          })}
+          ${input("blueprint_model", "Blueprint Model", {
+            value: config.blueprint.model,
+            placeholder: llmProvider === "azure-foundry" ? "Deployment name in Foundry" : "claude-sonnet-4-6",
           })}
         </div>
       `)}
 
-      ${card("Azure OpenAI", `
+      ${card("Embeddings - Semantic Search", `
         <div class="space-y-3">
-          ${input("azureOpenaiEndpoint", "Endpoint", {
-            value: keys.azureOpenaiEndpoint ? maskKey(keys.azureOpenaiEndpoint) : "",
-            placeholder: "Set via AZURE_OPENAI_ENDPOINT env var",
+          ${select("embeddingProvider", "Provider", EMBEDDING_PROVIDER_OPTIONS, embeddingProvider,
+            'hx-get="/settings/tab?tab=apikeys" hx-target="#settings-panel" hx-swap="innerHTML" hx-include="closest form"')}
+          ${embeddingProvider === "azure-openai" ? `
+            ${input("azureOpenaiEndpoint", "Endpoint", {
+              value: keys.azureOpenaiEndpoint ? maskKey(keys.azureOpenaiEndpoint) : "",
+              placeholder: "https://your-resource.openai.azure.com",
+            })}
+            ${input("azureOpenaiApiKey", "API Key", {
+              type: "password",
+              value: maskKey(keys.azureOpenaiApiKey),
+              placeholder: "Set via AZURE_OPENAI_API_KEY env var",
+            })}
+          ` : embeddingProvider === "openai" ? `
+            ${input("openaiApiKey", "API Key", {
+              type: "password",
+              value: maskKey(keys.openaiApiKey),
+              placeholder: "Set via OPENAI_API_KEY env var",
+            })}
+          ` : embeddingProvider === "voyage" ? `
+            ${input("voyageApiKey", "API Key", {
+              type: "password",
+              value: maskKey(keys.voyageApiKey),
+              placeholder: "Set via VOYAGE_API_KEY env var",
+            })}
+          ` : ""}
+          <hr class="border-slate-700" />
+          ${input("semantic_embeddingModel", "Model / Deployment", {
+            value: config.semantic.embeddingModel,
+            placeholder: embeddingProvider === "azure-openai" ? "Deployment name" : embeddingProvider === "voyage" ? "voyage-code-3" : "text-embedding-3-small",
           })}
-          ${input("azureOpenaiApiKey", "API Key", {
-            type: "password",
-            value: maskKey(keys.azureOpenaiApiKey),
-            placeholder: "Set via AZURE_OPENAI_API_KEY env var",
-          })}
-        </div>
-      `)}
-
-      ${card("Voyage", `
-        <div class="space-y-3">
-          ${input("voyageApiKey", "API Key", {
-            type: "password",
-            value: maskKey(keys.voyageApiKey),
-            placeholder: "Set via VOYAGE_API_KEY env var",
-          })}
-        </div>
-      `)}
-
-      ${card("OpenAI", `
-        <div class="space-y-3">
-          ${input("openaiApiKey", "API Key", {
-            type: "password",
-            value: maskKey(keys.openaiApiKey),
-            placeholder: "Set via OPENAI_API_KEY env var",
+          ${input("semantic_embeddingDimensions", "Dimensions", {
+            type: "number",
+            value: String(config.semantic.embeddingDimensions),
+            placeholder: "3072",
           })}
         </div>
       `)}
     </div>
 
+    <!-- Preserve keys not currently visible -->
+    ${embeddingProvider !== "azure-openai" ? `
+      <input type="hidden" name="azureOpenaiEndpoint" value="${escapeHtml(keys.azureOpenaiEndpoint ? maskKey(keys.azureOpenaiEndpoint) : "")}" />
+      <input type="hidden" name="azureOpenaiApiKey" value="${escapeHtml(keys.azureOpenaiApiKey ? maskKey(keys.azureOpenaiApiKey) : "")}" />
+    ` : ""}
+    ${embeddingProvider !== "openai" ? `
+      <input type="hidden" name="openaiApiKey" value="${escapeHtml(keys.openaiApiKey ? maskKey(keys.openaiApiKey) : "")}" />
+    ` : ""}
+    ${embeddingProvider !== "voyage" ? `
+      <input type="hidden" name="voyageApiKey" value="${escapeHtml(keys.voyageApiKey ? maskKey(keys.voyageApiKey) : "")}" />
+    ` : ""}
+    ${llmProvider !== "azure-foundry" ? `
+      <input type="hidden" name="anthropicBaseUrl" value="" />
+    ` : ""}
+
     <div class="flex justify-end">
-      ${button("Save API Keys", { variant: "primary", attrs: 'type="submit"' })}
+      ${button("Save", { variant: "primary", attrs: 'type="submit"' })}
     </div>
   </div>
 </form>`;

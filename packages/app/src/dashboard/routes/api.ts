@@ -5,8 +5,10 @@
  * Body: JSON (express.json() must be applied before these routes).
  *
  * Routes:
- *   POST /api/projects/:slug/search   — semantic search, returns JSON
- *   POST /api/projects/:slug/reindex  — enqueue reindex, returns 202
+ *   POST   /api/projects/:slug/search    — semantic search, returns JSON
+ *   GET    /api/projects/:slug/findings   — static analysis findings
+ *   POST   /api/projects/:slug/reindex    — enqueue reindex, returns 202
+ *   DELETE /api/projects/:slug             — delete project
  */
 
 import { Router } from "express";
@@ -42,11 +44,10 @@ apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, requirePermis
     return;
   }
 
-  const { query, maxResults = 20, maxSummaries = 30, maxFindings = 20 } = req.body as {
+  const { query, maxResults = 20, maxSummaries = 30 } = req.body as {
     query?: unknown;
     maxResults?: number;
     maxSummaries?: number;
-    maxFindings?: number;
   };
 
   if (!query || typeof query !== "string") {
@@ -84,9 +85,36 @@ apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, requirePermis
         content: r.summaryContent,
       }));
 
+    res.json({ relevantCode, moduleSummaries });
+  } catch (err) {
+    logger.error(
+      { slug, error: err instanceof Error ? err.message : String(err) },
+      "API search failed",
+    );
+    res.status(500).json({ error: "Search failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/projects/:slug/findings
+// ---------------------------------------------------------------------------
+
+apiRouter.get("/api/projects/:owner/:repo/findings", requireApiKey, requirePermission("read"), async (req, res) => {
+  const slug = `${req.params.owner}/${req.params.repo}`;
+
+  const project = await getProjectBySlug(slug);
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+
+  const severity = (req.query.severity as string | undefined)?.split(",") ?? ["critical", "high", "medium"];
+  const maxFindings = Math.min(Number(req.query.limit) || 50, 200);
+
+  try {
     const allFindings = await getFindingsByProjectId(project.id);
     const findings = allFindings
-      .filter((f) => ["critical", "high", "medium"].includes(f.severity))
+      .filter((f) => severity.includes(f.severity))
       .slice(0, maxFindings)
       .map((f) => ({
         category: f.category,
@@ -96,13 +124,13 @@ apiRouter.post("/api/projects/:owner/:repo/search", requireApiKey, requirePermis
         suggestion: f.suggestion ?? null,
       }));
 
-    res.json({ relevantCode, moduleSummaries, findings });
+    res.json({ findings });
   } catch (err) {
     logger.error(
       { slug, error: err instanceof Error ? err.message : String(err) },
-      "API search failed",
+      "API findings fetch failed",
     );
-    res.status(500).json({ error: "Search failed" });
+    res.status(500).json({ error: "Failed to fetch findings" });
   }
 });
 

@@ -103,6 +103,25 @@ export async function deleteEmbeddingsByProjectId(
 }
 
 /**
+ * Count embeddings for a project (debug helper).
+ */
+export async function countEmbeddings(projectId: number): Promise<{ total: number; withSummary: number }> {
+  const db = getDb();
+  const totalResult = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM prism_embeddings WHERE project_id = ${projectId}
+  `);
+  const joinResult = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM prism_embeddings e
+    JOIN prism_summaries s ON s.id = e.summary_id
+    WHERE e.project_id = ${projectId}
+  `);
+  return {
+    total: Number((totalResult.rows[0] as Record<string, unknown>)?.cnt ?? 0),
+    withSummary: Number((joinResult.rows[0] as Record<string, unknown>)?.cnt ?? 0),
+  };
+}
+
+/**
  * Perform a cosine similarity search using pgvector.
  *
  * Embeds the query vector, then uses the `<=>` operator to find the
@@ -122,12 +141,14 @@ export async function similaritySearch(
   const db = getDb();
 
   // Format the vector as a pgvector literal: [0.1,0.2,...]
-  const vectorLiteral = `[${queryVector.join(",")}]`;
+  // Use sql.raw() to inline the vector — parameterized strings with ::halfvec
+  // cast can fail depending on the driver's type inference.
+  const vectorLiteral = `'[${queryVector.join(",")}]'::halfvec`;
 
   const results = await db.execute(sql`
     SELECT
       e.id AS embedding_id,
-      e.embedding <=> ${vectorLiteral}::halfvec AS distance,
+      e.embedding <=> ${sql.raw(vectorLiteral)} AS distance,
       s.content AS summary_content,
       s.target_id,
       s.level,
@@ -146,7 +167,7 @@ export async function similaritySearch(
       )
     LEFT JOIN prism_files f ON f.id = sym.file_id
     WHERE e.project_id = ${projectId}
-    ORDER BY e.embedding <=> ${vectorLiteral}::halfvec
+    ORDER BY e.embedding <=> ${sql.raw(vectorLiteral)}
     LIMIT ${limit}
   `);
 
@@ -184,19 +205,19 @@ export async function simpleSimilaritySearch(
 ): Promise<SimilaritySearchResult[]> {
   const db = getDb();
 
-  const vectorLiteral = `[${queryVector.join(",")}]`;
+  const vectorLiteral = `'[${queryVector.join(",")}]'::halfvec`;
 
   const results = await db.execute(sql`
     SELECT
       e.id AS embedding_id,
-      e.embedding <=> ${vectorLiteral}::halfvec AS distance,
+      e.embedding <=> ${sql.raw(vectorLiteral)} AS distance,
       s.content AS summary_content,
       s.target_id,
       s.level
     FROM prism_embeddings e
     JOIN prism_summaries s ON s.id = e.summary_id
     WHERE e.project_id = ${projectId}
-    ORDER BY e.embedding <=> ${vectorLiteral}::halfvec
+    ORDER BY e.embedding <=> ${sql.raw(vectorLiteral)}
     LIMIT ${limit}
   `);
 

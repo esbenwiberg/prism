@@ -84,6 +84,7 @@ export {
   deleteEmbeddingsByProjectId,
   similaritySearch,
   simpleSimilaritySearch,
+  countEmbeddings,
   type InsertEmbeddingInput,
   type EmbeddingRow,
   type SimilaritySearchResult,

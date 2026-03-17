@@ -30,7 +30,6 @@ import {
   getConfig,
   createEmbedder,
   similaritySearch,
-  getFindingsByProjectId,
   createProject,
   deleteProject,
   upsertReindexRequest,
@@ -47,16 +46,6 @@ export const mcpRouter = Router();
 // Helpers (ported from packages/mcp)
 // ---------------------------------------------------------------------------
 
-function severityEmoji(severity?: string): string {
-  switch (severity?.toLowerCase()) {
-    case "critical": return "🔴";
-    case "high": return "⚠";
-    case "medium": return "🟡";
-    case "low": return "🔵";
-    default: return "ℹ";
-  }
-}
-
 interface FormatInput {
   relevantCode: Array<{
     filePath: string | null;
@@ -69,13 +58,6 @@ interface FormatInput {
   moduleSummaries: Array<{
     targetId: string;
     summaryContent: string | null;
-  }>;
-  findings: Array<{
-    category: string;
-    severity: string;
-    title: string;
-    description: string | null;
-    suggestion: string | null;
   }>;
 }
 
@@ -112,19 +94,6 @@ function formatResponse(query: string, slug: string, data: FormatInput): string 
     lines.push("");
   }
 
-  // Findings
-  const findings = data.findings;
-  if (findings.length > 0) {
-    lines.push("### Findings");
-    for (const f of findings) {
-      const sev = `${f.severity.toUpperCase()}: `;
-      lines.push(`${severityEmoji(f.severity)} ${sev}${f.title}`);
-      if (f.description) lines.push(f.description);
-      if (f.suggestion) lines.push(`_Fix:_ ${f.suggestion}`);
-      lines.push("");
-    }
-  }
-
   return lines.join("\n");
 }
 
@@ -156,7 +125,7 @@ function createMcpServer(permissions: string[]): Server {
       {
         name: "search_codebase",
         description:
-          "Search the Prism-indexed codebase for relevant code, module summaries, and findings.",
+          "Search the Prism-indexed codebase for relevant code and module summaries.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -270,7 +239,6 @@ function createMcpServer(permissions: string[]): Server {
         const [queryVector] = await embedder.embed([query]);
 
         const maxSummaries = 30;
-        const maxFindings = 20;
         const searchLimit = maxResults + maxSummaries;
         const allResults = await similaritySearch(project.id, queryVector, searchLimit);
 
@@ -282,12 +250,7 @@ function createMcpServer(permissions: string[]): Server {
           .filter((r) => r.level === "module")
           .slice(0, maxSummaries);
 
-        const allFindings = await getFindingsByProjectId(project.id);
-        const findings = allFindings
-          .filter((f) => ["critical", "high", "medium"].includes(f.severity))
-          .slice(0, maxFindings);
-
-        const text = formatResponse(query, slug, { relevantCode, moduleSummaries, findings });
+        const text = formatResponse(query, slug, { relevantCode, moduleSummaries });
         return { content: [{ type: "text" as const, text }] };
       } catch (err) {
         logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "MCP search failed");

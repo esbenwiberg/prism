@@ -8,6 +8,10 @@ set -euo pipefail
 # Designed to run from the session worktree root with env vars injected by
 # Orcha's deploy configuration.
 #
+# Instead of tarring the local directory (which can OOM the Orcha container),
+# this script passes the git remote URL + current commit to ACR Tasks so the
+# build context is cloned directly on ACR's servers — zero local memory.
+#
 # Required environment variables:
 #   AZURE_SUBSCRIPTION_ID — Azure subscription to target
 #   AZURE_RESOURCE_GROUP  — Azure resource group (e.g. prism-rg)
@@ -15,6 +19,7 @@ set -euo pipefail
 # Optional environment variables:
 #   AZURE_ACR_NAME        — ACR name (auto-detected from resource group if omitted)
 #   IMAGE_TAG             — Docker image tag (default: latest)
+#   GIT_TOKEN             — PAT for private repos (injected into clone URL)
 # ---------------------------------------------------------------------------
 
 : "${AZURE_SUBSCRIPTION_ID:?AZURE_SUBSCRIPTION_ID is required}"

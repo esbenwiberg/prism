@@ -1211,8 +1211,13 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
             })),
           );
         } catch (embedErr) {
-          logger.warn(
-            { error: embedErr instanceof Error ? embedErr.message : String(embedErr) },
+          logger.error(
+            {
+              error: embedErr instanceof Error ? embedErr.message : String(embedErr),
+              stack: embedErr instanceof Error ? embedErr.stack : undefined,
+              batchSize: summaryResults.length,
+              textLengths: summaryResults.map((s) => s.content.length),
+            },
             "Failed to embed summaries — summaries stored but embeddings skipped",
           );
         }

@@ -43,6 +43,22 @@ router.get("/settings/tab", async (req: Request, res: Response, next: NextFuncti
     }
 
     const config = getConfig();
+
+    // When the API Keys tab dropdowns change, form values come as query params.
+    // Apply them as overrides so the correct credential fields render.
+    if (tab === "apikeys") {
+      const ep = req.query.embeddingProvider;
+      if (typeof ep === "string" && ep) {
+        config.semantic.embeddingProvider = ep;
+      }
+      const lp = req.query.llmProvider;
+      if (lp === "azure-foundry" && !config.apiKeys.anthropicBaseUrl) {
+        config.apiKeys.anthropicBaseUrl = " "; // non-empty to trigger Azure UI
+      } else if (lp === "anthropic") {
+        config.apiKeys.anthropicBaseUrl = "";
+      }
+    }
+
     const tabContent =
       tab === "apikeys"
         ? apiKeysTabPartial(config)
@@ -234,17 +250,38 @@ router.post("/settings/apikeys", async (req: Request, res: Response, next: NextF
 
     const apiKeys = {
       anthropicApiKey: resolveKey("anthropicApiKey", current.anthropicApiKey),
+      anthropicBaseUrl: resolveKey("anthropicBaseUrl", current.anthropicBaseUrl),
       azureOpenaiEndpoint: resolveKey("azureOpenaiEndpoint", current.azureOpenaiEndpoint),
       azureOpenaiApiKey: resolveKey("azureOpenaiApiKey", current.azureOpenaiApiKey),
       voyageApiKey: resolveKey("voyageApiKey", current.voyageApiKey),
       openaiApiKey: resolveKey("openaiApiKey", current.openaiApiKey),
     };
 
-    const updatedConfig = await saveConfig({ apiKeys });
+    // Build semantic/analysis/blueprint config from model fields
+    const semantic: Record<string, unknown> = {};
+    if (body.embeddingProvider && ["voyage", "openai", "azure-openai"].includes(body.embeddingProvider)) {
+      semantic.embeddingProvider = body.embeddingProvider;
+    }
+    if (body.semantic_model) semantic.model = body.semantic_model;
+    if (body.semantic_embeddingModel) semantic.embeddingModel = body.semantic_embeddingModel;
+    if (body.semantic_embeddingDimensions) semantic.embeddingDimensions = Number(body.semantic_embeddingDimensions);
+
+    const analysis: Record<string, unknown> = {};
+    if (body.analysis_model) analysis.model = body.analysis_model;
+
+    const blueprint: Record<string, unknown> = {};
+    if (body.blueprint_model) blueprint.model = body.blueprint_model;
+
+    const updatedConfig = await saveConfig({
+      apiKeys,
+      ...(Object.keys(semantic).length > 0 ? { semantic } : {}),
+      ...(Object.keys(analysis).length > 0 ? { analysis } : {}),
+      ...(Object.keys(blueprint).length > 0 ? { blueprint } : {}),
+    });
 
     res.setHeader(
       "HX-Trigger",
-      JSON.stringify({ showToast: { message: "API keys saved", type: "success" } }),
+      JSON.stringify({ showToast: { message: "Settings saved", type: "success" } }),
     );
     res.send(apiKeysTabPartial(updatedConfig));
   } catch (err) {

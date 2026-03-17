@@ -70,6 +70,7 @@ const DEFAULT_CONFIG: PrismConfig = {
   },
   apiKeys: {
     anthropicApiKey: "",
+    anthropicBaseUrl: "",
     azureOpenaiApiKey: "",
     azureOpenaiEndpoint: "",
     voyageApiKey: "",
