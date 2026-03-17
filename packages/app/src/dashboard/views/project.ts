@@ -33,14 +33,14 @@ function actionButtons(project: Project): string {
       hx-target="#job-progress"
       hx-swap="outerHTML"
       class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-400">
-      Index
+      Index (incremental)
     </button>
     <button hx-post="/projects/${project.id}/index"
       hx-target="#job-progress"
       hx-swap="outerHTML"
       hx-vals='{"fullReindex": "true"}'
       class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-slate-50">
-      Re-index
+      Full re-index
     </button>
     <button hx-delete="/projects/${project.id}"
       hx-confirm="Are you sure you want to delete this project? All indexed data will be permanently removed."
