@@ -1458,7 +1458,7 @@ async function executeHistoryLayer(
   const { project, fullReindex } = context;
   const startTime = Date.now();
 
-  const indexRun = await createIndexRun(project.id, "history");
+  const indexRun = await createIndexRun(project.id, "history", 0);
 
   try {
     const { commitsProcessed, filesUpdated } = await runHistoryLayer({

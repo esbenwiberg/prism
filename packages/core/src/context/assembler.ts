@@ -31,6 +31,10 @@ import {
 } from "./signals/findings.js";
 import { collectSemanticSignal } from "./signals/semantic.js";
 import {
+  getCoChangedFiles,
+  getChangeHotspots,
+} from "../db/queries/commits.js";
+import {
   collectChangeSignals,
   collectReviewSignals,
 } from "./signals/history.js";
@@ -136,6 +140,36 @@ export async function assembleFileContext(
     symbolsSignal,
     findingsSignal,
   ];
+
+  // History: change frequency + co-changed files
+  try {
+    const historyItems = [];
+    if (file.changeFrequency && file.changeFrequency > 0) {
+      const isHotspot = file.changeFrequency > 10;
+      historyItems.push({
+        content: `Changed ${file.changeFrequency} times${isHotspot ? " (**hotspot**)" : ""}${file.lastChangedAt ? ` — last changed ${file.lastChangedAt.toISOString().slice(0, 10)}` : ""}`,
+        relevance: isHotspot ? 0.9 : 0.5,
+      });
+    }
+
+    const coChanged = await getCoChangedFiles(projectId, file.id, 5);
+    for (const c of coChanged) {
+      historyItems.push({
+        content: `Co-changes with **${c.filePath}** (${c.coChangeCount} times)`,
+        relevance: Math.min(1, c.coChangeCount / 10),
+      });
+    }
+
+    if (historyItems.length > 0) {
+      signals.push({
+        heading: "Change History",
+        priority: 4,
+        items: historyItems,
+      });
+    }
+  } catch {
+    // History tables may not exist yet — gracefully skip
+  }
 
   // Optional: intent-matched semantic search
   if (intent) {
@@ -330,20 +364,39 @@ export async function assembleRelatedFiles(
     }
   }
 
+  // Co-change boost: if query is a file path, boost files that co-change with it
+  const coChangeScores = new Map<string, number>();
+  if (queryFile) {
+    try {
+      const coChanged = await getCoChangedFiles(projectId, queryFile.id, 20);
+      for (const c of coChanged) {
+        coChangeScores.set(c.filePath, Math.min(1, c.coChangeCount / 10));
+      }
+    } catch {
+      // History tables may not exist — skip
+    }
+  }
+
   // Merge scores
-  const allPaths = new Set([...semanticScores.keys(), ...graphPathScores.keys()]);
+  const allPaths = new Set([
+    ...semanticScores.keys(),
+    ...graphPathScores.keys(),
+    ...coChangeScores.keys(),
+  ]);
   const scored: Array<{ path: string; score: number; relationship: string }> = [];
 
   for (const path of allPaths) {
     const semantic = semanticScores.get(path) ?? 0;
     const graph = graphPathScores.get(path) ?? 0;
-    const combined = semantic * 0.6 + graph * 0.4;
-    const boost = semantic > 0 && graph > 0 ? 0.15 : 0;
+    const coChange = coChangeScores.get(path) ?? 0;
+    const combined = semantic * 0.5 + graph * 0.3 + coChange * 0.2;
+    const boost = (semantic > 0 && graph > 0 ? 0.1 : 0) + (coChange > 0 ? 0.05 : 0);
 
     // Determine relationship type
     let relationship = "semantic";
     if (graph > 0 && semantic > 0) relationship = "semantic + dependency";
     else if (graph > 0) relationship = "dependency";
+    if (coChange > 0) relationship += " + co-change";
 
     // Test file penalty
     const file = fileByPath.get(path);
@@ -420,12 +473,31 @@ export async function assembleArchitectureOverview(
         : [{ content: "No cross-module dependencies detected.", relevance: 0.3 }],
   };
 
+  // Hotspot summary from history
+  let hotspotsSignal: SignalResult = { heading: "Hotspots", priority: 5, items: [] };
+  try {
+    const hotspots = await getChangeHotspots(projectId, 10);
+    if (hotspots.length > 0) {
+      hotspotsSignal = {
+        heading: "Change Hotspots",
+        priority: 5,
+        items: hotspots.map((h) => ({
+          content: `**${h.filePath}** — ${h.changeCount} changes`,
+          relevance: Math.min(1, h.changeCount / 20),
+        })),
+      };
+    }
+  } catch {
+    // History tables may not exist — skip
+  }
+
   const signals = [
     archSummaries.purpose,
     archSummaries.system,
     archSummaries.modules,
     interModuleSignal,
     criticalFindings,
+    hotspotsSignal,
   ];
 
   const sections = signalsToSections(signals);
