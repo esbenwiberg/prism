@@ -10,7 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { resolve, relative, dirname } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -61,13 +61,14 @@ import {
   bulkInsertSummaries,
   bulkInsertEmbeddings,
   getSummariesByLevel,
+  getSummariesByLevelAsMap,
 } from "../db/queries/index.js";
 import { chunkFileSymbols, filterSummarisableSymbols } from "./semantic/chunker.js";
 import { summariseBatch, type SummariseInput } from "./semantic/summarizer.js";
 import { createEmbedder } from "./semantic/embedder.js";
 
 // Analysis layer imports
-import { rollupFileSummaries, rollupModuleSummaries, rollupSystemSummary } from "./analysis/rollup.js";
+import { rollupFileSummaries, rollupModuleSummaries, rollupSystemSummary, type FileRollupResult, type ModuleRollupResult, type SystemRollupResult } from "./analysis/rollup.js";
 import { runPatternDetection } from "./analysis/patterns.js";
 import { runGapAnalysis } from "./analysis/gap-analysis.js";
 
@@ -685,6 +686,11 @@ async function executeStructuralLayer(
     "Files selected for indexing",
   );
 
+  // Expose changed files to downstream layers (analysis uses this for dirty-flag propagation)
+  context.changedFiles = fullReindex
+    ? undefined
+    : new Set(filesToIndex.map((f) => f.path));
+
   // Create index run
   const indexRun = await createIndexRun(
     project.id,
@@ -1287,11 +1293,13 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
  * Execute the analysis layer (Layer 4).
  *
  * 1. Hierarchical summary rollup (file -> module -> system)
- * 2. Pattern detection (all detectors)
- * 3. Gap analysis (docs intent vs code reality)
+ *    — with dirty-flag propagation: only changed files/modules/system get
+ *      re-rolled up. `context.changedFiles` drives the dirty set.
+ * 2. Pattern detection (all detectors — CPU-only, always runs)
+ * 3. Gap analysis (only if system summary changed)
  */
 async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult> {
-  const { project, config, budget } = context;
+  const { project, config, budget, fullReindex, changedFiles } = context;
   const startTime = Date.now();
 
   if (!config.analysis.enabled) {
@@ -1308,6 +1316,19 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
 
   logger.info({ projectId: project.id }, "Starting analysis layer");
 
+  // Determine dirty files: undefined means "all dirty" (full reindex or first run)
+  const dirtyFiles: Set<string> | undefined =
+    fullReindex || changedFiles === undefined ? undefined : changedFiles;
+
+  logger.info(
+    {
+      projectId: project.id,
+      mode: dirtyFiles === undefined ? "full" : "incremental",
+      dirtyFileCount: dirtyFiles?.size ?? "all",
+    },
+    "Analysis layer dirty-flag mode",
+  );
+
   // Count unique files from function summaries to set an accurate filesTotal upfront
   const functionSummariesEarly = await getSummariesByLevel(project.id, "function");
   const uniqueFileCount = new Set(
@@ -1318,8 +1339,15 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
   let totalCostUsd = 0;
 
   try {
+    // Load existing summaries for reuse during incremental rollup
+    const [existingFileSummaries, existingModuleSummaries, existingSystemSummaries] =
+      await Promise.all([
+        getSummariesByLevelAsMap(project.id, "file"),
+        getSummariesByLevelAsMap(project.id, "module"),
+        getSummariesByLevelAsMap(project.id, "system"),
+      ]);
+
     // 1. Hierarchical summary rollup
-    // Re-use the already-fetched function summaries
     const functionSummaries = functionSummariesEarly;
     logger.info(
       { count: functionSummaries.length },
@@ -1344,95 +1372,138 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
 
     // File-level rollup — update progress after each file
     logger.info({ projectId: project.id }, "Analysis: starting file rollup");
-    const fileSummaries = await rollupFileSummaries(
+    const fileRollup: FileRollupResult = await rollupFileSummaries(
       project.id,
       functionSummaries,
       filePathMap,
       config.analysis,
       budget,
       (filesProcessed) => updateIndexRunProgress(indexRun.id, filesProcessed),
+      dirtyFiles,
+      existingFileSummaries,
     );
-    totalCostUsd += fileSummaries.reduce(
+    totalCostUsd += fileRollup.results.reduce(
       (sum, s) => sum + (s.costUsd ? Number(s.costUsd) : 0),
       0,
     );
 
-    logger.info({ projectId: project.id, fileSummaries: fileSummaries.length }, "Analysis: file rollup complete");
+    logger.info(
+      {
+        projectId: project.id,
+        fileSummaries: fileRollup.results.length,
+        dirtyFiles: fileRollup.dirtyFilePaths.size,
+      },
+      "Analysis: file rollup complete",
+    );
+
+    // Compute dirty modules from dirty file paths (dirname of each dirty file)
+    const dirtyModules: Set<string> | undefined =
+      dirtyFiles === undefined
+        ? undefined
+        : new Set(
+            [...fileRollup.dirtyFilePaths]
+              .map((fp) => dirname(fp))
+              .filter((m) => m !== "."),
+          );
 
     // Module-level rollup
     logger.info({ projectId: project.id }, "Analysis: starting module rollup");
-    const moduleSummaries = await rollupModuleSummaries(
+    const moduleRollup: ModuleRollupResult = await rollupModuleSummaries(
       project.id,
-      fileSummaries,
+      fileRollup.results,
       config.analysis,
       budget,
+      dirtyModules,
+      existingModuleSummaries,
     );
-    totalCostUsd += moduleSummaries.reduce(
+    totalCostUsd += moduleRollup.results.reduce(
       (sum, s) => sum + (s.costUsd ? Number(s.costUsd) : 0),
       0,
     );
 
-    logger.info({ projectId: project.id, moduleSummaries: moduleSummaries.length }, "Analysis: module rollup complete");
+    logger.info(
+      {
+        projectId: project.id,
+        moduleSummaries: moduleRollup.results.length,
+        dirtyModules: moduleRollup.dirtyModulePaths.size,
+      },
+      "Analysis: module rollup complete",
+    );
 
-    // System-level rollup
-    logger.info({ projectId: project.id }, "Analysis: starting system rollup");
-    const systemSummary = await rollupSystemSummary(
+    // System-level rollup — regenerate if any module was dirty
+    const anyModuleDirty = dirtyModules === undefined || moduleRollup.dirtyModulePaths.size > 0;
+    const existingSystemSummary = existingSystemSummaries.get(`system:${project.name}`);
+
+    logger.info({ projectId: project.id, forceRegenerate: anyModuleDirty }, "Analysis: starting system rollup");
+    const systemRollup: SystemRollupResult = await rollupSystemSummary(
       project.id,
       project.name,
-      moduleSummaries,
+      moduleRollup.results,
       config.analysis,
       budget,
+      anyModuleDirty,
+      existingSystemSummary,
     );
-    if (systemSummary?.costUsd) {
-      totalCostUsd += Number(systemSummary.costUsd);
+    if (systemRollup.summary?.costUsd) {
+      totalCostUsd += Number(systemRollup.summary.costUsd);
     }
 
-    logger.info({ projectId: project.id, hasSystemSummary: !!systemSummary }, "Analysis: system rollup complete");
+    logger.info(
+      { projectId: project.id, hasSystemSummary: !!systemRollup.summary, changed: systemRollup.changed },
+      "Analysis: system rollup complete",
+    );
 
-    // 2. Pattern detection (runs all detectors)
+    // 2. Pattern detection (CPU-only — always runs)
     logger.info({ projectId: project.id }, "Analysis: starting pattern detection");
     const { count: findingsCount } = await runPatternDetection(project.id);
     logger.info({ projectId: project.id, findingsCount }, "Analysis: pattern detection complete");
 
-    // 3. Gap analysis
-    // Re-read files from disk to build doc intent
-    const allFiles = await walkProjectFiles(
-      project.path,
-      config.structural.skipPatterns,
-      config.structural.maxFileSizeBytes,
-    );
-    const readmeResults = parseDocFiles(allFiles);
-    const configInfos = parseConfigFiles(allFiles);
-    const commentResults = extractCommentsFromFiles(allFiles);
-    const techStack = buildTechStack(configInfos, allFiles);
-    const intent = assembleIntent(readmeResults, configInfos, commentResults, techStack);
-    const intentText = buildIntentDocContent(intent);
+    // 3. Gap analysis — only re-run if system summary changed
+    let gapFindingsCount = 0;
+    if (systemRollup.changed) {
+      const allFiles = await walkProjectFiles(
+        project.path,
+        config.structural.skipPatterns,
+        config.structural.maxFileSizeBytes,
+      );
+      const readmeResults = parseDocFiles(allFiles);
+      const configInfos = parseConfigFiles(allFiles);
+      const commentResults = extractCommentsFromFiles(allFiles);
+      const techStack = buildTechStack(configInfos, allFiles);
+      const intent = assembleIntent(readmeResults, configInfos, commentResults, techStack);
+      const intentText = buildIntentDocContent(intent);
 
-    logger.info({ projectId: project.id }, "Analysis: starting gap analysis");
-    const gapFindings = await runGapAnalysis(
-      project.id,
-      project.name,
-      intentText,
-      systemSummary?.content ?? "",
-      moduleSummaries,
-      config.analysis,
-      budget,
-    );
-
-    logger.info({ projectId: project.id, gapFindings: gapFindings.length }, "Analysis: gap analysis complete");
+      logger.info({ projectId: project.id }, "Analysis: starting gap analysis");
+      const gapFindings = await runGapAnalysis(
+        project.id,
+        project.name,
+        intentText,
+        systemRollup.summary?.content ?? "",
+        moduleRollup.results,
+        config.analysis,
+        budget,
+      );
+      gapFindingsCount = gapFindings.length;
+      logger.info({ projectId: project.id, gapFindings: gapFindingsCount }, "Analysis: gap analysis complete");
+    } else {
+      logger.info({ projectId: project.id }, "Analysis: skipping gap analysis (system summary unchanged)");
+    }
 
     const durationMs = Date.now() - startTime;
-    const filesProcessed = fileSummaries.length + moduleSummaries.length + (systemSummary ? 1 : 0);
+    const filesProcessed = fileRollup.results.length + moduleRollup.results.length + (systemRollup.summary ? 1 : 0);
 
     await completeIndexRun(indexRun.id, filesProcessed, durationMs, totalCostUsd);
 
     logger.info(
       {
-        fileSummaries: fileSummaries.length,
-        moduleSummaries: moduleSummaries.length,
-        hasSystemSummary: !!systemSummary,
+        fileSummaries: fileRollup.results.length,
+        fileSummariesDirty: fileRollup.dirtyFilePaths.size,
+        moduleSummaries: moduleRollup.results.length,
+        moduleSummariesDirty: moduleRollup.dirtyModulePaths.size,
+        hasSystemSummary: !!systemRollup.summary,
+        systemChanged: systemRollup.changed,
         findings: findingsCount,
-        gaps: gapFindings.length,
+        gaps: gapFindingsCount,
         costUsd: totalCostUsd.toFixed(4),
         durationMs,
       },

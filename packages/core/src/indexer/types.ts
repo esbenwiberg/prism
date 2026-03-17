@@ -168,4 +168,13 @@ export interface IndexContext {
   results: LayerResult[];
   /** Budget tracker for LLM-consuming layers. */
   budget: BudgetTracker;
+  /**
+   * Files changed since the last index run. Used by the analysis layer
+   * to skip unchanged files/modules.
+   *
+   * - `undefined` = unknown (treat all as dirty — full reindex or first run)
+   * - empty Set   = nothing changed
+   * - non-empty   = only these file paths changed
+   */
+  changedFiles?: Set<string>;
 }
