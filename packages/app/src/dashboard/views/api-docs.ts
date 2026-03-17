@@ -176,6 +176,17 @@ ${card("Task context (enrichment)", `
     param("query", "string", true, "", "Natural language description of the task") +
     param("maxTokens", "number", false, "16000", "Token budget — priority system allocates it")
   )}
+  <p class="text-xs text-slate-500 mb-1">Response:</p>
+  ${json(`{
+  "sections": [
+    { "heading": "Purpose", "priority": 1, "content": "Prism is a standalone...", "tokenCount": 120 },
+    { "heading": "Relevant Code", "priority": 2, "content": "**src/indexer/pipeline.ts** — ...", "tokenCount": 850 },
+    { "heading": "File Summaries", "priority": 2, "content": "**src/indexer/pipeline.ts**\\n...", "tokenCount": 340 },
+    { "heading": "Blast Radius — src/indexer/pipeline.ts", "priority": 3, "content": "...", "tokenCount": 210 }
+  ],
+  "totalTokens": 4520,
+  "truncated": false
+}`)}
   <p class="text-xs text-slate-500 mt-2">Graceful degradation: returns architecture + findings even if semantic layer isn't indexed yet.</p>
 `)}
 

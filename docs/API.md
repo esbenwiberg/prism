@@ -195,7 +195,42 @@ POST /api/projects/:owner/:repo/context/enrich
 | `query`     | `string` | yes      |          | Natural language description of the task         |
 | `maxTokens` | `number` | no       | `16000`  | Token budget — priority system allocates it      |
 
-**Response `200`:** Context object with sections (architecture, relevant code, file summaries, blast radius, dependencies, findings, recent changes) and token metadata. High-priority sections survive even with small token budgets.
+**Response `200`:**
+
+```json
+{
+  "sections": [
+    {
+      "heading": "Purpose",
+      "priority": 1,
+      "content": "Prism is a standalone codebase analysis tool...",
+      "tokenCount": 120
+    },
+    {
+      "heading": "Relevant Code",
+      "priority": 2,
+      "content": "**src/indexer/pipeline.ts** — `runPipeline` (function)\nOrchestrates the five-layer indexing pipeline...",
+      "tokenCount": 850
+    },
+    {
+      "heading": "File Summaries",
+      "priority": 2,
+      "content": "**src/indexer/pipeline.ts**\nMain indexing pipeline orchestrator...",
+      "tokenCount": 340
+    },
+    {
+      "heading": "Blast Radius — src/indexer/pipeline.ts",
+      "priority": 3,
+      "content": "**src/worker/executor.ts** (depth 1)...",
+      "tokenCount": 210
+    }
+  ],
+  "totalTokens": 4520,
+  "truncated": false
+}
+```
+
+High-priority sections survive even with small token budgets.
 
 **Graceful degradation:** If no semantic layer is indexed yet, returns architecture + critical findings. Never returns empty.
 
