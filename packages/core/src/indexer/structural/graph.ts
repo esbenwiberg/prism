@@ -7,7 +7,7 @@
 
 import { dirname, join, posix } from "node:path";
 import type Parser from "web-tree-sitter";
-import type { DependencyEdge, SupportedLanguage } from "../types.js";
+import type { DependencyEdge, StructuralFileResult, SupportedLanguage } from "../types.js";
 import type { DependencyKind } from "../../domain/types.js";
 
 type TSNode = Parser.SyntaxNode;
@@ -238,7 +238,7 @@ function resolvePythonImport(
 }
 
 // ---------------------------------------------------------------------------
-// C# (using directives → namespace-based, not file-based)
+// C# (using directives → namespace-based, resolved via namespace map)
 // ---------------------------------------------------------------------------
 
 function extractCSharpDependencies(
@@ -254,7 +254,7 @@ function extractCSharpDependencies(
         edges.push({
           sourceFile: filePath,
           importSpecifier: nameNode.text,
-          targetFile: null, // C# uses namespaces, not direct file resolution
+          targetFile: null, // Resolved later by resolveCSharpNamespaces()
           kind: "import",
         });
       }
@@ -262,6 +262,133 @@ function extractCSharpDependencies(
   });
 
   return edges;
+}
+
+/**
+ * Extract the namespace declared in a C# AST.
+ *
+ * Handles both block-scoped (`namespace Foo.Bar { ... }`) and
+ * file-scoped (`namespace Foo.Bar;`) declarations. Returns null
+ * if no namespace declaration is found (rare but valid for top-level code).
+ */
+export function extractCSharpNamespace(rootNode: TSNode): string | null {
+  for (const child of rootNode.namedChildren) {
+    if (child.type === "namespace_declaration") {
+      const nameNode = child.childForFieldName("name");
+      return nameNode?.text ?? null;
+    }
+    // File-scoped namespace: `namespace Foo.Bar;`
+    if (child.type === "file_scoped_namespace_declaration") {
+      const nameNode = child.childForFieldName("name");
+      return nameNode?.text ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Post-process structural results to resolve C# `using` directives
+ * to actual file paths via a namespace → files mapping.
+ *
+ * Call this after all files have been through the structural pass.
+ * Mutates the dependency edges in-place.
+ *
+ * Strategy:
+ * 1. Build a map of declared namespace → file paths from all C# files
+ * 2. For each unresolved C# `using X.Y.Z` edge, find files declaring
+ *    that namespace (or a parent namespace containing matching types)
+ * 3. Set `targetFile` to the resolved path
+ *
+ * A single namespace may map to multiple files (partial classes, etc).
+ * In that case, all files are linked as separate dependency edges.
+ */
+export function resolveCSharpNamespaces(
+  results: StructuralFileResult[],
+  namespaceMap: Map<string, string>,
+): void {
+  // Build namespace → file paths lookup (one namespace can span multiple files)
+  const nsToFiles = new Map<string, string[]>();
+  for (const [filePath, ns] of namespaceMap) {
+    const existing = nsToFiles.get(ns);
+    if (existing) {
+      existing.push(filePath);
+    } else {
+      nsToFiles.set(ns, [filePath]);
+    }
+  }
+
+  for (const result of results) {
+    if (result.file.language !== "c_sharp") continue;
+
+    const newEdges: DependencyEdge[] = [];
+
+    for (const edge of result.dependencies) {
+      if (edge.targetFile != null || edge.kind !== "import") continue;
+
+      const usingNs = edge.importSpecifier;
+      const resolved = resolveUsingDirective(usingNs, nsToFiles, result.file.path);
+
+      if (resolved.length === 0) {
+        // Unresolvable (external assembly or unindexed) — keep as-is
+        continue;
+      }
+
+      // First match replaces the original edge
+      edge.targetFile = resolved[0];
+
+      // Additional matches become new edges (e.g. partial classes)
+      for (let i = 1; i < resolved.length; i++) {
+        newEdges.push({
+          sourceFile: edge.sourceFile,
+          importSpecifier: usingNs,
+          targetFile: resolved[i],
+          kind: "import",
+        });
+      }
+    }
+
+    if (newEdges.length > 0) {
+      result.dependencies.push(...newEdges);
+    }
+  }
+}
+
+/**
+ * Resolve a `using X.Y.Z` directive to file paths.
+ *
+ * Tries exact namespace match first, then walks up the namespace
+ * hierarchy to find parent namespaces (handles `using Foo.Bar` when
+ * files declare `namespace Foo.Bar.Baz` — less common but valid).
+ */
+function resolveUsingDirective(
+  usingNs: string,
+  nsToFiles: Map<string, string[]>,
+  sourceFile: string,
+): string[] {
+  // Exact match: `using Foo.Bar` → files declaring `namespace Foo.Bar`
+  const exact = nsToFiles.get(usingNs);
+  if (exact) {
+    return exact.filter((f) => f !== sourceFile);
+  }
+
+  // Child namespace match: `using Foo.Bar` might match files in
+  // `Foo.Bar.Something` — collect all files whose namespace starts
+  // with the using directive as a prefix.
+  // Cap at 20 to avoid explosion for very broad namespace imports.
+  const prefix = usingNs + ".";
+  const childMatches: string[] = [];
+  for (const [ns, files] of nsToFiles) {
+    if (ns.startsWith(prefix)) {
+      for (const f of files) {
+        if (f !== sourceFile) {
+          childMatches.push(f);
+          if (childMatches.length >= 20) return childMatches;
+        }
+      }
+    }
+  }
+
+  return childMatches;
 }
 
 // ---------------------------------------------------------------------------
