@@ -44,7 +44,7 @@ Signal collectors assemble task-relevant context:
 - All database tables use `prism_` prefix
 - Config loaded from `prism.config.yaml` with env overrides (DB settings take priority)
 - Prompts stored as markdown in `prompts/`
-- Migrations in `drizzle/` (run automatically on deploy via entrypoint.sh)
+- Migrations in `drizzle/` (run automatically on deploy via entrypoint.sh). **When adding a new migration SQL file, you MUST also add its entry to `drizzle/meta/_journal.json`** — the migrator only applies migrations listed in the journal. Missing journal entries cause silent schema drift.
 - Test fixtures in `test/fixtures/` (golden repo for integration tests)
 - Summary quality scores (0-1) on `prism_summaries`, embeddings gated at ≥ 0.4
 - Finding dedup via fingerprinting, confidence scoring on `prism_findings`
