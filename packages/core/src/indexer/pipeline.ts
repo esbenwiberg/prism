@@ -63,6 +63,10 @@ import {
   getSummariesByLevel,
   getSummariesByLevelAsMap,
   deleteSummariesByTargets,
+  deleteSummariesByProjectId,
+  deleteEmbeddingsByProjectId,
+  deleteFindingsByProjectId,
+  deleteCommitsByProjectId,
 } from "../db/queries/index.js";
 import { chunkFileSymbols, filterSummarisableSymbols } from "./semantic/chunker.js";
 import { summariseBatch, type SummariseInput } from "./semantic/summarizer.js";
@@ -525,6 +529,18 @@ export async function runPipeline(
     },
     "Starting indexing pipeline",
   );
+
+  // Full reindex: clear derived data so deleted files/modules don't leave stale rows.
+  // Tables with ON DELETE CASCADE from prism_files (symbols, dependencies) are handled
+  // by the structural layer's per-file delete+re-insert. Summaries, embeddings, findings,
+  // and commits are project-scoped and need explicit cleanup.
+  if (fullReindex) {
+    logger.info({ projectId: project.id }, "Full reindex: clearing derived data");
+    await deleteEmbeddingsByProjectId(project.id);
+    await deleteSummariesByProjectId(project.id);
+    await deleteFindingsByProjectId(project.id);
+    await deleteCommitsByProjectId(project.id);
+  }
 
   for (const layer of layers) {
     // Check for cancellation before each layer
