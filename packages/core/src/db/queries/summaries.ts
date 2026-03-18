@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { summaries } from "../schema.js";
 
@@ -26,6 +26,10 @@ export interface InsertSummaryInput {
   inputHash: string | null;
   /** Cost in USD. */
   costUsd: string | null;
+  /** Self-assessed quality score 0.0-1.0. */
+  qualityScore: string | null;
+  /** Whether this summary was demoted due to low quality. */
+  demoted: boolean;
 }
 
 export type SummaryRow = typeof summaries.$inferSelect;
@@ -187,4 +191,125 @@ export async function getExistingInputHashes(
     }
   }
   return hashes;
+}
+
+// ---------------------------------------------------------------------------
+// Quality dashboard queries
+// ---------------------------------------------------------------------------
+
+export interface QualityStats {
+  total: number;
+  avg: number | null;
+  demotedCount: number;
+}
+
+export interface QualityBucketRow {
+  bucket: string;
+  count: number;
+}
+
+export interface QualityByLevelRow {
+  level: string;
+  avgScore: number | null;
+  count: number;
+}
+
+/**
+ * Get aggregate quality stats for a project: total summaries, average score,
+ * and count of demoted summaries.
+ */
+export async function getQualityStats(
+  projectId: number,
+): Promise<QualityStats> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      avg: sql<number | null>`avg(${summaries.qualityScore})`,
+      demotedCount: sql<number>`count(*) filter (where ${summaries.demoted} = true)::int`,
+    })
+    .from(summaries)
+    .where(eq(summaries.projectId, projectId));
+
+  return {
+    total: row?.total ?? 0,
+    avg: row?.avg !== null && row?.avg !== undefined ? Number(row.avg) : null,
+    demotedCount: row?.demotedCount ?? 0,
+  };
+}
+
+/**
+ * Get quality score distribution in buckets for a project.
+ */
+export async function getQualityDistribution(
+  projectId: number,
+): Promise<QualityBucketRow[]> {
+  const db = getDb();
+  return db
+    .select({
+      bucket: sql<string>`
+        case
+          when ${summaries.qualityScore} is null then 'unscored'
+          when ${summaries.qualityScore} < 0.2 then '0-0.2'
+          when ${summaries.qualityScore} < 0.4 then '0.2-0.4'
+          when ${summaries.qualityScore} < 0.6 then '0.4-0.6'
+          when ${summaries.qualityScore} < 0.8 then '0.6-0.8'
+          else '0.8-1.0'
+        end`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(summaries)
+    .where(eq(summaries.projectId, projectId))
+    .groupBy(sql`1`);
+}
+
+/**
+ * Get average quality score grouped by summary level.
+ */
+export async function getQualityByLevel(
+  projectId: number,
+): Promise<QualityByLevelRow[]> {
+  const db = getDb();
+  return db
+    .select({
+      level: summaries.level,
+      avgScore: sql<number | null>`avg(${summaries.qualityScore})`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(summaries)
+    .where(eq(summaries.projectId, projectId))
+    .groupBy(summaries.level);
+}
+
+/**
+ * Get all demoted summaries for a project.
+ */
+export async function getDemotedSummaries(
+  projectId: number,
+): Promise<SummaryRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(summaries)
+    .where(and(eq(summaries.projectId, projectId), eq(summaries.demoted, true)));
+}
+
+/**
+ * Get summaries with quality_score < threshold, sorted ascending.
+ */
+export async function getLowQualitySummaries(
+  projectId: number,
+  threshold = "0.4",
+): Promise<SummaryRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(summaries)
+    .where(
+      and(
+        eq(summaries.projectId, projectId),
+        lt(summaries.qualityScore, threshold),
+      ),
+    )
+    .orderBy(summaries.qualityScore);
 }

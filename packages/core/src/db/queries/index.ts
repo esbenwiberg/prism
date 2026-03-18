@@ -22,6 +22,7 @@ export {
   deleteFilesByPaths,
   bulkUpsertFiles,
   updateFileDocContent,
+  searchDocContent,
   type UpsertFileInput,
   type FileRow,
 } from "./files.js";
@@ -79,8 +80,16 @@ export {
   deleteSummariesByProjectId,
   deleteSummariesByTargets,
   getExistingInputHashes,
+  getQualityStats,
+  getQualityDistribution,
+  getQualityByLevel,
+  getDemotedSummaries,
+  getLowQualitySummaries,
   type InsertSummaryInput,
   type SummaryRow,
+  type QualityStats,
+  type QualityBucketRow,
+  type QualityByLevelRow,
 } from "./summaries.js";
 
 export {

@@ -62,10 +62,12 @@ import {
   bulkInsertEmbeddings,
   getSummariesByLevel,
   getSummariesByLevelAsMap,
+  deleteSummariesByTargets,
 } from "../db/queries/index.js";
 import { chunkFileSymbols, filterSummarisableSymbols } from "./semantic/chunker.js";
 import { summariseBatch, type SummariseInput } from "./semantic/summarizer.js";
 import { createEmbedder } from "./semantic/embedder.js";
+import { chunkDocContent, summariseDocChunks } from "./semantic/doc-summarizer.js";
 
 // Analysis layer imports
 import { rollupFileSummaries, rollupModuleSummaries, rollupSystemSummary, type FileRollupResult, type ModuleRollupResult, type SystemRollupResult } from "./analysis/rollup.js";
@@ -77,6 +79,9 @@ import { runPurposeAnalysis } from "./purpose/index.js";
 
 // History layer imports
 import { runHistoryLayer } from "./history/index.js";
+
+// Staleness propagation
+import { propagateStaleness } from "./staleness.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -899,10 +904,33 @@ async function executeDocsLayer(context: IndexContext): Promise<LayerResult> {
       "Assembled project intent",
     );
 
-    // Store the intent as metadata on the project (via a special doc_content update)
-    // We store it on a synthetic "__intent__" path to make it queryable
-    // Actually, we'll log it but storing intent is done via the intent text on README files
-    logger.debug({ intentLength: intentText.length }, "Intent assembled");
+    // Persist the project intent as a summary row (level="intent") so it's
+    // queryable and surfaced in context enrichment. Uses input hash of all
+    // doc_content that fed into it for incremental detection.
+    const intentInputHash = createHash("sha256").update(intentText).digest("hex");
+    const existingIntentSummaries = await getSummariesByLevel(project.id, "intent");
+    const existingIntent = existingIntentSummaries.find(
+      (s) => s.targetId === `intent:${project.name}`,
+    );
+
+    if (!existingIntent || existingIntent.inputHash !== intentInputHash) {
+      const intentTargetId = `intent:${project.name}`;
+      await deleteSummariesByTargets(project.id, "intent", [intentTargetId]);
+      await bulkInsertSummaries([{
+        projectId: project.id,
+        level: "intent",
+        targetId: intentTargetId,
+        content: intentText,
+        model: null,
+        inputHash: intentInputHash,
+        costUsd: "0",
+        qualityScore: null,
+        demoted: false,
+      }]);
+      logger.info({ intentLength: intentText.length }, "Project intent persisted");
+    } else {
+      logger.debug("Project intent unchanged, skipping persist");
+    }
 
     // Update progress
     await updateIndexRunProgress(indexRun.id, filesProcessed);
@@ -1133,6 +1161,48 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
   // Get existing input hashes for staleness detection
   const existingHashes = await getExistingInputHashes(project.id);
 
+  // Cross-file staleness propagation: if file B changed and file A imports B,
+  // file A's summaries may be stale even though A's content didn't change.
+  // For dependency-stale files, we'll build a separate "force re-summarise" set
+  // that bypasses the hash check in summariseBatch.
+  let staleFilePaths = new Set<string>();
+  if (context.changedFiles && context.changedFiles.size > 0) {
+    const stalenessResult = await propagateStaleness(project.id, context.changedFiles);
+    staleFilePaths = stalenessResult.staleFilePaths;
+
+    // For dependency-stale files (not content-changed), remove their existing
+    // hashes so summariseBatch will re-process them
+    const depStaleFiles = new Set<string>();
+    for (const [path, reason] of stalenessResult.staleReasons) {
+      if (reason === "dependency_changed") depStaleFiles.add(path);
+    }
+
+    if (depStaleFiles.size > 0) {
+      // Get all function-level summaries for stale files and remove their hashes
+      const staleSummaries = await getSummariesByLevel(project.id, "function");
+      for (const summary of staleSummaries) {
+        // targetId format: "filePath:symbolName:symbolKind"
+        const parts = summary.targetId.split(":");
+        const filePath = parts.slice(0, -2).join(":");
+        if (depStaleFiles.has(filePath) && summary.inputHash) {
+          existingHashes.delete(summary.inputHash);
+        }
+      }
+    }
+
+    // Store stale files on context for the analysis layer
+    context.staleFiles = depStaleFiles;
+
+    logger.info(
+      {
+        contentChanged: context.changedFiles.size,
+        totalStale: staleFilePaths.size,
+        dependencyStale: depStaleFiles.size,
+      },
+      "Staleness propagation applied",
+    );
+  }
+
   // Collect all summarisation inputs
   const summariseInputs: SummariseInput[] = [];
   let totalSymbols = 0;
@@ -1228,34 +1298,57 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
             model: s.model,
             inputHash: s.inputHash,
             costUsd: s.costUsd.toFixed(4),
+            qualityScore: s.qualityScore.toFixed(2),
+            demoted: s.demoted,
           })),
         );
 
-        // Embed the summaries
-        try {
-          const embedder = createEmbedder(config.semantic);
-          const textsToEmbed = summaryResults.map((s) => s.content);
-          const vectors = await embedder.embed(textsToEmbed);
+        // Embedding quality gate: only embed summaries with sufficient quality
+        const embeddableResults = summaryResults.filter(
+          (s) => s.qualityScore >= 0.4,
+        );
+        const skippedCount = summaryResults.length - embeddableResults.length;
+        if (skippedCount > 0) {
+          logger.info(
+            { skipped: skippedCount, total: summaryResults.length },
+            "Skipped low-quality summaries for embedding",
+          );
+        }
 
-          // Store embeddings
-          await bulkInsertEmbeddings(
-            summaryRows.map((row, idx) => ({
-              projectId: project.id,
-              summaryId: row.id,
-              embedding: vectors[idx],
-              model: config.semantic.embeddingModel,
-            })),
-          );
-        } catch (embedErr) {
-          logger.error(
-            {
-              error: embedErr instanceof Error ? embedErr.message : String(embedErr),
-              stack: embedErr instanceof Error ? embedErr.stack : undefined,
-              batchSize: summaryResults.length,
-              textLengths: summaryResults.map((s) => s.content.length),
-            },
-            "Failed to embed summaries — summaries stored but embeddings skipped",
-          );
+        // Embed the quality-passing summaries
+        if (embeddableResults.length > 0) {
+          try {
+            const embedder = createEmbedder(config.semantic);
+            const textsToEmbed = embeddableResults.map((s) => s.content);
+            const vectors = await embedder.embed(textsToEmbed);
+
+            // Match back to DB rows by targetId
+            const rowByTargetId = new Map(summaryRows.map((r) => [r.targetId, r]));
+            const embeddingInputs = embeddableResults
+              .map((s, idx) => {
+                const row = rowByTargetId.get(s.targetId);
+                if (!row) return null;
+                return {
+                  projectId: project.id,
+                  summaryId: row.id,
+                  embedding: vectors[idx],
+                  model: config.semantic.embeddingModel,
+                };
+              })
+              .filter((e): e is NonNullable<typeof e> => e != null);
+
+            await bulkInsertEmbeddings(embeddingInputs);
+          } catch (embedErr) {
+            logger.error(
+              {
+                error: embedErr instanceof Error ? embedErr.message : String(embedErr),
+                stack: embedErr instanceof Error ? embedErr.stack : undefined,
+                batchSize: embeddableResults.length,
+                textLengths: embeddableResults.map((s) => s.content.length),
+              },
+              "Failed to embed summaries — summaries stored but embeddings skipped",
+            );
+          }
         }
 
         totalCostUsd += summaryResults.reduce((sum, s) => sum + s.costUsd, 0);
@@ -1269,6 +1362,88 @@ async function executeSemanticLayer(context: IndexContext): Promise<LayerResult>
         { batch: batchNumber, symbolsProcessed, totalSymbols, batchCostUsd: batchCostUsd.toFixed(4) },
         "Semantic batch complete",
       );
+    }
+
+    // -----------------------------------------------------------------
+    // Doc embedding: summarise and embed documentation files
+    // -----------------------------------------------------------------
+    if (!budget.exceeded) {
+      const docFiles = projectFiles.filter(
+        (f) => f.isDoc && f.docContent != null && f.docContent.length > 0,
+      );
+
+      if (docFiles.length > 0) {
+        logger.info(
+          { docFileCount: docFiles.length, projectId: project.id },
+          "Processing documentation files for semantic embedding",
+        );
+
+        // Chunk all doc files
+        const allDocChunks = docFiles.flatMap((f) =>
+          chunkDocContent(f.path, f.docContent!),
+        );
+
+        logger.info(
+          { totalDocChunks: allDocChunks.length },
+          "Doc chunks prepared for summarisation",
+        );
+
+        // Summarise doc chunks
+        const docSummaryResults = await summariseDocChunks(
+          allDocChunks,
+          config.semantic,
+          budget,
+          existingHashes,
+        );
+
+        if (docSummaryResults.length > 0) {
+          // Store doc summaries
+          const docSummaryRows = await bulkInsertSummaries(
+            docSummaryResults.map((s) => ({
+              projectId: project.id,
+              level: "doc" as const,
+              targetId: s.targetId,
+              content: s.content,
+              model: s.model,
+              inputHash: s.inputHash,
+              costUsd: s.costUsd.toFixed(4),
+              qualityScore: s.qualityScore.toFixed(2),
+              demoted: s.demoted,
+            })),
+          );
+
+          // Embed doc summaries
+          try {
+            const embedder = createEmbedder(config.semantic);
+            const docTexts = docSummaryResults.map((s) => s.content);
+            const docVectors = await embedder.embed(docTexts);
+
+            await bulkInsertEmbeddings(
+              docSummaryRows.map((row, idx) => ({
+                projectId: project.id,
+                summaryId: row.id,
+                embedding: docVectors[idx],
+                model: config.semantic.embeddingModel,
+              })),
+            );
+
+            logger.info(
+              { embeddedDocs: docSummaryResults.length },
+              "Doc summaries embedded",
+            );
+          } catch (embedErr) {
+            logger.error(
+              {
+                error: embedErr instanceof Error ? embedErr.message : String(embedErr),
+                batchSize: docSummaryResults.length,
+              },
+              "Failed to embed doc summaries - summaries stored but embeddings skipped",
+            );
+          }
+
+          totalCostUsd += docSummaryResults.reduce((sum, s) => sum + s.costUsd, 0);
+        }
+      }
     }
 
     const durationMs = Date.now() - startTime;
@@ -1339,8 +1514,11 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
   logger.info({ projectId: project.id }, "Starting analysis layer");
 
   // Determine dirty files: undefined means "all dirty" (full reindex or first run)
+  // Merge in stale files (dependency-changed) so they get re-rolled up too
   const dirtyFiles: Set<string> | undefined =
-    fullReindex || changedFiles === undefined ? undefined : changedFiles;
+    fullReindex || changedFiles === undefined
+      ? undefined
+      : new Set([...changedFiles, ...(context.staleFiles ?? [])]);
 
   logger.info(
     {

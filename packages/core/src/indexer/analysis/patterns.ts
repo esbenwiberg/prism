@@ -29,6 +29,7 @@ import {
   type LayeringEdge,
   type CouplingMetricsInput,
 } from "./detectors/index.js";
+import { deduplicateFindings } from "./dedup.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -166,19 +167,34 @@ export async function runPatternDetection(
   allFindings.push(...couplingFindings);
   logger.debug({ count: couplingFindings.length }, "Coupling findings");
 
+  // Deduplicate and score findings before persisting
+  const deduped = deduplicateFindings(allFindings);
+
+  logger.info(
+    {
+      projectId,
+      rawFindings: allFindings.length,
+      dedupedFindings: deduped.length,
+      removed: allFindings.length - deduped.length,
+    },
+    "Findings deduplicated",
+  );
+
   // Clear old findings and persist new ones
   await deleteFindingsByProjectId(projectId);
 
-  if (allFindings.length > 0) {
+  if (deduped.length > 0) {
     await bulkInsertFindings(
-      allFindings.map((f) => ({
+      deduped.map((f) => ({
         projectId,
         category: f.category as import("../../domain/types.js").FindingCategory,
-        severity: f.severity,
+        severity: f.severity as import("../../domain/types.js").FindingSeverity,
         title: f.title,
         description: f.description,
         evidence: f.evidence,
         suggestion: f.suggestion,
+        fingerprint: f.fingerprint,
+        confidence: String(f.confidence),
       })),
     );
   }
@@ -186,7 +202,7 @@ export async function runPatternDetection(
   logger.info(
     {
       projectId,
-      totalFindings: allFindings.length,
+      totalFindings: deduped.length,
       circular: circularFindings.length,
       deadCode: deadCodeFindings.length,
       godModule: godModuleFindings.length,
@@ -196,5 +212,5 @@ export async function runPatternDetection(
     "Pattern detection complete",
   );
 
-  return { findings: allFindings, count: allFindings.length };
+  return { findings: allFindings, count: deduped.length };
 }

@@ -1,0 +1,11 @@
+{
+  "name": "golden-repo",
+  "version": "1.0.0",
+  "description": "GoldenApp — a demo authentication API for integration testing",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "license": "MIT"
+}

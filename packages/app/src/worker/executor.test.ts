@@ -23,15 +23,21 @@ vi.mock("@prism/core", () => ({
   cloneDestination: vi.fn((id: number) => `/tmp/prism-clones/${id}`),
   decryptToken: vi.fn(),
   runPipeline: vi.fn(),
-  initConfig: vi.fn(() => ({
-    blueprint: { enabled: true, model: "claude-3-5-sonnet-20241022", budgetUsd: 1.0 },
+  getConfig: vi.fn(() => ({
+    blueprint: { enabled: true, model: "claude-sonnet-4-6", budgetUsd: 1.0 },
   })),
+  getJobStatus: vi.fn(() => "running"),
   createBudgetTracker: vi.fn(() => ({
     budgetUsd: 1.0,
     spentUsd: 0,
     exceeded: false,
+    remaining: 1.0,
     record: vi.fn(),
   })),
+  createIndexRun: vi.fn(() => ({ id: 99 })),
+  updateIndexRunProgress: vi.fn(),
+  completeIndexRun: vi.fn(),
+  failIndexRun: vi.fn(),
 }));
 
 // Mock the blueprint generator
@@ -215,7 +221,10 @@ describe("executeJob — blueprint type", () => {
   it("generates hierarchical blueprint for the project", async () => {
     const project = makeProject();
     mockGetProject.mockResolvedValue(project as any);
-    mockGenerateBlueprint.mockResolvedValue(null);
+    mockGenerateBlueprint.mockResolvedValue({
+      plan: { id: 1, title: "Test Plan" },
+      phases: [{ id: 1, title: "Phase 1" }],
+    });
 
     const result = await executeJob(
       makeJob({

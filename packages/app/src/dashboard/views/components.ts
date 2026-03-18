@@ -289,6 +289,7 @@ const PROJECT_TABS = [
   { key: "purpose", label: "Purpose" },
   // Semantic layer
   { key: "summaries", label: "Summaries" },
+  { key: "quality", label: "Quality" },
   // Analysis layer
   { key: "modules", label: "Modules" },
   { key: "findings", label: "Findings" },

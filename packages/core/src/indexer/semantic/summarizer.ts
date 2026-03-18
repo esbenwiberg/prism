@@ -58,6 +58,10 @@ export interface SummaryResult {
   model: string;
   /** A stable target identifier (e.g. "file:symbol:kind"). */
   targetId: string;
+  /** Self-assessed quality score 0.0-1.0 */
+  qualityScore: number;
+  /** Whether this summary was demoted due to low quality */
+  demoted: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +181,92 @@ export function computeCost(inputTokens: number, outputTokens: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Quality scoring helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the CONFIDENCE score from LLM output and strip it from the summary.
+ */
+export function parseQualityScore(text: string): { summary: string; score: number } {
+  const match = text.match(/CONFIDENCE:\s*([\d.]+)/);
+  const score = match ? Math.min(1, Math.max(0, parseFloat(match[1]))) : 0.5;
+  const summary = text.replace(/\n?CONFIDENCE:\s*[\d.]+\s*$/, "").trim();
+  return { summary, score };
+}
+
+/**
+ * Apply heuristic quality adjustments based on content analysis.
+ */
+export function applyHeuristicChecks(
+  content: string,
+  symbol: ExtractedSymbol,
+  baseScore: number,
+): number {
+  let score = baseScore;
+  const lineSpan = (symbol.endLine ?? 0) - (symbol.startLine ?? 0);
+
+  // Too short for a large symbol
+  if (content.length < 20 && lineSpan > 50) {
+    score = Math.min(score, 0.3);
+  }
+
+  // Too generic / vague
+  const vaguePatterns = [
+    /this (?:function|method|class) (?:does|handles|performs) (?:things|logic|operations|work|stuff)/i,
+    /^(?:a |the )?(?:function|method|class|helper|utility)\s*$/i,
+  ];
+  if (vaguePatterns.some((p) => p.test(content))) {
+    score = Math.min(score, 0.3);
+  }
+
+  // Missing key terms from symbol name
+  const nameTerms = symbol.name.toLowerCase().match(/[a-z]{4,}/g) ?? [];
+  const importantTerms = nameTerms.filter((t) =>
+    [
+      "auth",
+      "cache",
+      "valid",
+      "encrypt",
+      "decrypt",
+      "parse",
+      "format",
+      "connect",
+      "query",
+      "fetch",
+      "send",
+      "receive",
+    ].some((k) => t.includes(k)),
+  );
+  if (importantTerms.length > 0) {
+    const contentLower = content.toLowerCase();
+    const missingAll = importantTerms.every((t) => !contentLower.includes(t));
+    if (missingAll) score = Math.max(0, score - 0.2);
+  }
+
+  return score;
+}
+
+/**
+ * Build an enhanced prompt with neighbor context for retry attempts.
+ */
+export function buildEnhancedPrompt(input: SummariseInput, originalPrompt: string): string {
+  const neighborContext = input.allSymbols
+    .filter((s) => s.name !== input.symbol.name)
+    .slice(0, 5)
+    .map((s) => `  - ${s.name} (${s.kind}): ${s.signature ?? "no signature"}`)
+    .join("\n");
+
+  return (
+    originalPrompt +
+    `\n\nAdditional context — neighboring symbols in the same file:\n${neighborContext}\n\nPlease provide a more specific and accurate summary.`
+  );
+}
+
+/** Confidence prompt suffix appended to every summarisation request. */
+const CONFIDENCE_SUFFIX =
+  "\n\nAfter your summary, on a new line write CONFIDENCE: followed by a number from 0.0 to 1.0 rating how confident you are that this summary accurately captures the symbol's purpose.";
+
+// ---------------------------------------------------------------------------
 // Summariser
 // ---------------------------------------------------------------------------
 
@@ -224,34 +314,76 @@ export async function summariseBatch(
     }
 
     try {
+      const promptWithConfidence = prompt + CONFIDENCE_SUFFIX;
+
       const response = await client.messages.create({
         model: config.model,
         max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: promptWithConfidence }],
       });
 
       // Extract text from response
       const textBlock = response.content.find((block) => block.type === "text");
-      const content = textBlock && "text" in textBlock ? textBlock.text : "";
+      const rawContent = textBlock && "text" in textBlock ? textBlock.text : "";
 
       // Compute cost
-      const costUsd = computeCost(
+      let totalCostUsd = computeCost(
         response.usage.input_tokens,
         response.usage.output_tokens,
       );
 
-      budget.record(costUsd);
+      budget.record(totalCostUsd);
+
+      // Parse quality score from response
+      let { summary: cleanContent, score } = parseQualityScore(rawContent);
+
+      // Retry once with enhanced prompt if score is too low
+      if (score < 0.4 && !budget.exceeded) {
+        logger.info(
+          { symbol: input.symbol.name, score },
+          "Low confidence — retrying with enhanced prompt",
+        );
+
+        const enhancedPrompt = buildEnhancedPrompt(input, prompt) + CONFIDENCE_SUFFIX;
+
+        const retryResponse = await client.messages.create({
+          model: config.model,
+          max_tokens: 300,
+          messages: [{ role: "user", content: enhancedPrompt }],
+        });
+
+        const retryTextBlock = retryResponse.content.find((block) => block.type === "text");
+        const retryRawContent = retryTextBlock && "text" in retryTextBlock ? retryTextBlock.text : "";
+
+        const retryCost = computeCost(
+          retryResponse.usage.input_tokens,
+          retryResponse.usage.output_tokens,
+        );
+
+        budget.record(retryCost);
+        totalCostUsd += retryCost;
+
+        const retryParsed = parseQualityScore(retryRawContent);
+        cleanContent = retryParsed.summary;
+        score = retryParsed.score;
+      }
+
+      // Apply heuristic adjustments
+      const adjustedScore = applyHeuristicChecks(cleanContent, input.symbol, score);
+      const demoted = adjustedScore < 0.4;
 
       const targetId = `${input.filePath}:${input.symbol.name}:${input.symbol.kind}`;
 
       results.push({
         symbolName: input.symbol.name,
         symbolKind: input.symbol.kind,
-        content,
+        content: cleanContent,
         inputHash,
-        costUsd,
+        costUsd: totalCostUsd,
         model: config.model,
         targetId,
+        qualityScore: adjustedScore,
+        demoted,
       });
 
       logger.info(
@@ -259,7 +391,9 @@ export async function summariseBatch(
           symbol: input.symbol.name,
           inputTokens: response.usage.input_tokens,
           outputTokens: response.usage.output_tokens,
-          costUsd: costUsd.toFixed(4),
+          costUsd: totalCostUsd.toFixed(4),
+          qualityScore: adjustedScore.toFixed(2),
+          demoted,
         },
         "Symbol summarised",
       );
