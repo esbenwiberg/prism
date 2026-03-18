@@ -32,6 +32,7 @@ const CONTEXT_TYPES = [
   { value: "architecture", label: "Architecture Overview" },
   { value: "change", label: "Change Context" },
   { value: "review", label: "Review Context" },
+  { value: "enrich", label: "Task Context (Enrich)" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,13 @@ function reviewFields(): string {
 </div>`;
 }
 
+function enrichFields(): string {
+  return `<div class="space-y-4">
+  ${input("query", "Query", { required: true, placeholder: "How does the auth middleware work?" })}
+  ${input("maxTokens", "Max Tokens", { type: "number", value: "16000" })}
+</div>`;
+}
+
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
@@ -110,6 +118,7 @@ function contextForm(projectId: number): string {
   <div id="fields-architecture" class="hidden">${architectureFields()}</div>
   <div id="fields-change" class="hidden">${changeFields()}</div>
   <div id="fields-review" class="hidden">${reviewFields()}</div>
+  <div id="fields-enrich" class="hidden">${enrichFields()}</div>
 
   <div class="flex items-center gap-3 pt-2">
     ${button("Assemble Context", { attrs: 'type="submit"' })}
@@ -149,7 +158,7 @@ function resultArea(data: ContextExplorerPageData): string {
 const clientScript = `
 <script>
   function switchContextFields(type) {
-    var groups = ['file', 'module', 'related', 'architecture', 'change', 'review'];
+    var groups = ['file', 'module', 'related', 'architecture', 'change', 'review', 'enrich'];
     for (var i = 0; i < groups.length; i++) {
       var el = document.getElementById('fields-' + groups[i]);
       if (el) {

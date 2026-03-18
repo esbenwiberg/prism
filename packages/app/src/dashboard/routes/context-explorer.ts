@@ -14,6 +14,7 @@ import {
   assembleArchitectureOverview,
   assembleChangeContext,
   assembleReviewContext,
+  assembleTaskContext,
   formatContextAsMarkdown,
   logger,
   type RelatedFileResult,
@@ -154,6 +155,18 @@ contextExplorerRouter.post("/projects/:id/context/query", async (req, res) => {
         const until = (req.body.until as string) || undefined;
         const maxTokens = parseIntOrDefault(req.body.maxTokens, 8000);
         const response = await assembleReviewContext({ projectId: id, since, until, maxTokens });
+        res.send(contextResponseFragment(response));
+        return;
+      }
+
+      case "enrich": {
+        const query = req.body.query as string;
+        if (!query) {
+          res.send(errorFragment("Query is required."));
+          return;
+        }
+        const maxTokens = parseIntOrDefault(req.body.maxTokens, 16000);
+        const response = await assembleTaskContext({ projectId: id, query, maxTokens });
         res.send(contextResponseFragment(response));
         return;
       }
