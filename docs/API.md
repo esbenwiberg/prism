@@ -173,7 +173,7 @@ Rich, pre-assembled context designed to be injected into LLM prompts. Each endpo
 
 ### Task context (enrichment) — recommended entry point
 
-One-shot endpoint that assembles everything an agent needs to start a task: architecture overview, relevant files with summaries, dependencies, blast radius, findings, and recent changes — all scoped to a natural language query. Prism allocates the token budget across signals automatically using its priority system.
+One-shot endpoint that assembles everything an agent needs to start a task: architecture context, explicitly mentioned files, semantic code & doc matches, forward dependencies, aggregated blast radius, and recent changes — all scoped to a natural language query. Prism allocates the token budget across signals automatically using a 4-tier priority system.
 
 ```
 POST /api/projects/:owner/:repo/context/enrich
@@ -201,10 +201,28 @@ POST /api/projects/:owner/:repo/context/enrich
 {
   "sections": [
     {
+      "heading": "Mentioned Files",
+      "priority": 1,
+      "content": "**src/indexer/pipeline.ts**\n```ts\nexport async function runPipeline...\n```",
+      "tokenCount": 620
+    },
+    {
       "heading": "Purpose",
       "priority": 1,
       "content": "Prism is a standalone codebase analysis tool...",
       "tokenCount": 120
+    },
+    {
+      "heading": "System Architecture",
+      "priority": 1,
+      "content": "Core modules: indexer, context, db...",
+      "tokenCount": 310
+    },
+    {
+      "heading": "Dependencies of Mentioned Files",
+      "priority": 2,
+      "content": "**src/db/queries.ts** — database query layer...",
+      "tokenCount": 280
     },
     {
       "heading": "Relevant Code",
@@ -213,24 +231,43 @@ POST /api/projects/:owner/:repo/context/enrich
       "tokenCount": 850
     },
     {
-      "heading": "File Summaries",
+      "heading": "Relevant Documentation",
       "priority": 2,
-      "content": "**src/indexer/pipeline.ts**\nMain indexing pipeline orchestrator...",
-      "tokenCount": 340
+      "content": "**docs/architecture.md** — Pipeline design...",
+      "tokenCount": 200
     },
     {
-      "heading": "Blast Radius — src/indexer/pipeline.ts",
+      "heading": "Blast Radius (3 files potentially affected)",
       "priority": 3,
       "content": "**src/worker/executor.ts** (depth 1)...",
       "tokenCount": 210
+    },
+    {
+      "heading": "Commits for Relevant Files",
+      "priority": 3,
+      "content": "`a1b2c3d` fix: handle timeout in LLM calls — alice (2026-03-15)",
+      "tokenCount": 180
+    },
+    {
+      "heading": "Recent Commits",
+      "priority": 4,
+      "content": "`e4f5g6h` feat: add semantic layer caching — bob (2026-03-14)",
+      "tokenCount": 150
     }
   ],
-  "totalTokens": 4520,
+  "totalTokens": 2920,
   "truncated": false
 }
 ```
 
-High-priority sections survive even with small token budgets.
+**Priority tiers:**
+
+| Priority | Sections | Behaviour |
+|----------|----------|-----------|
+| 1 | Mentioned Files, Purpose, System Architecture | Guaranteed — survive even tiny token budgets |
+| 2 | Dependencies of Mentioned Files, Shared Dependencies, Relevant Code, Relevant Documentation | High value — included unless budget is very tight |
+| 3 | Blast Radius, Commits for Relevant Files | Supporting context — trimmed first when budget is limited |
+| 4 | Recent Commits | Background — only included when budget allows |
 
 **Graceful degradation:** If no semantic layer is indexed yet, returns architecture + critical findings. Never returns empty.
 
@@ -487,7 +524,7 @@ POST /mcp
 | `get_architecture_overview`| `read`       | System architecture: purpose, module map, inter-module dependencies, critical findings          |
 | `get_change_context`       | `read`       | Recent commits, change frequency, co-change patterns, author distribution                       |
 | `get_review_context`       | `read`       | Architecture drift, redundancy, regressions, and hotspots for a time range                      |
-| `enrich_task_context`      | `read`       | One-shot task context: architecture, relevant code, file summaries, blast radius, findings, changes |
+| `enrich_task_context`      | `read`       | One-shot task context: mentioned files, architecture, code & doc search, dependencies, blast radius, changes |
 | `register_project`         | `register`   | Register a new project for indexing                                                             |
 | `delete_project`           | `register`   | Delete a project and all its data (irreversible)                                                |
 | `trigger_reindex`          | `index`      | Enqueue a reindex job for specified layers                                                      |

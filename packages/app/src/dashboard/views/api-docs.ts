@@ -170,7 +170,7 @@ ${card("Delete project", `
 <!-- Task Context (Enrich) -->
 ${card("Task context (enrichment)", `
   <p class="text-sm text-slate-400 mb-1">⭐ <strong class="text-slate-200">Recommended entry point.</strong> One-shot endpoint that assembles everything an agent needs for a task.</p>
-  <p class="text-sm text-slate-400 mb-3">Architecture overview, relevant files with summaries, dependencies, blast radius, findings, and recent changes — all scoped to a natural language query. Prism allocates the token budget automatically via its priority system.</p>
+  <p class="text-sm text-slate-400 mb-3">Mentioned files, architecture context, semantic code &amp; doc matches, forward dependencies, aggregated blast radius, and recent changes — all scoped to a natural language query. Prism allocates the token budget automatically via a 4-tier priority system.</p>
   ${endpoint("POST", "/api/projects/:owner/:repo/context/enrich", "read")}
   ${paramTable(
     param("query", "string", true, "", "Natural language description of the task") +
@@ -179,15 +179,36 @@ ${card("Task context (enrichment)", `
   <p class="text-xs text-slate-500 mb-1">Response:</p>
   ${json(`{
   "sections": [
+    { "heading": "Mentioned Files", "priority": 1, "content": "**src/indexer/pipeline.ts**\\n...", "tokenCount": 620 },
     { "heading": "Purpose", "priority": 1, "content": "Prism is a standalone...", "tokenCount": 120 },
+    { "heading": "System Architecture", "priority": 1, "content": "Core modules: indexer, context, db...", "tokenCount": 310 },
+    { "heading": "Dependencies of Mentioned Files", "priority": 2, "content": "**src/db/queries.ts** — ...", "tokenCount": 280 },
     { "heading": "Relevant Code", "priority": 2, "content": "**src/indexer/pipeline.ts** — ...", "tokenCount": 850 },
-    { "heading": "File Summaries", "priority": 2, "content": "**src/indexer/pipeline.ts**\\n...", "tokenCount": 340 },
-    { "heading": "Blast Radius — src/indexer/pipeline.ts", "priority": 3, "content": "...", "tokenCount": 210 }
+    { "heading": "Relevant Documentation", "priority": 2, "content": "**docs/architecture.md** — ...", "tokenCount": 200 },
+    { "heading": "Blast Radius (3 files potentially affected)", "priority": 3, "content": "...", "tokenCount": 210 },
+    { "heading": "Commits for Relevant Files", "priority": 3, "content": "\`a1b2c3d\` fix: handle timeout...", "tokenCount": 180 },
+    { "heading": "Recent Commits", "priority": 4, "content": "\`e4f5g6h\` feat: add caching...", "tokenCount": 150 }
   ],
-  "totalTokens": 4520,
+  "totalTokens": 2920,
   "truncated": false
 }`)}
-  <p class="text-xs text-slate-500 mt-2">Graceful degradation: returns architecture + findings even if semantic layer isn't indexed yet.</p>
+  <p class="text-xs text-slate-500 mt-2 mb-2">Priority tiers:</p>
+  <div class="overflow-x-auto">
+    <table class="w-full mb-2">
+      <thead><tr class="text-left text-xs text-slate-500 border-b border-slate-700">
+        <th class="py-1 pr-3 font-medium">Priority</th>
+        <th class="py-1 pr-3 font-medium">Sections</th>
+        <th class="py-1 font-medium">Behaviour</th>
+      </tr></thead>
+      <tbody>
+        <tr class="border-b border-slate-700/50"><td class="py-1 pr-3 font-mono text-xs text-purple-400">1</td><td class="py-1 pr-3 text-xs text-slate-400">Mentioned Files, Purpose, System Architecture</td><td class="py-1 text-xs text-slate-400">Guaranteed — survive even tiny token budgets</td></tr>
+        <tr class="border-b border-slate-700/50"><td class="py-1 pr-3 font-mono text-xs text-purple-400">2</td><td class="py-1 pr-3 text-xs text-slate-400">Dependencies of Mentioned Files, Shared Dependencies, Relevant Code, Relevant Documentation</td><td class="py-1 text-xs text-slate-400">High value — included unless budget is very tight</td></tr>
+        <tr class="border-b border-slate-700/50"><td class="py-1 pr-3 font-mono text-xs text-purple-400">3</td><td class="py-1 pr-3 text-xs text-slate-400">Blast Radius, Commits for Relevant Files</td><td class="py-1 text-xs text-slate-400">Supporting — trimmed first under budget pressure</td></tr>
+        <tr class="border-b border-slate-700/50"><td class="py-1 pr-3 font-mono text-xs text-purple-400">4</td><td class="py-1 pr-3 text-xs text-slate-400">Recent Commits</td><td class="py-1 text-xs text-slate-400">Background — only when budget allows</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-slate-500">Graceful degradation: returns architecture + critical findings even if semantic layer isn't indexed yet.</p>
 `)}
 
 <!-- File Context -->
@@ -299,7 +320,7 @@ ${card("MCP endpoint", `
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_architecture_overview</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">System architecture, module map, critical findings</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_change_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">Commits, change frequency, co-change patterns</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">get_review_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">Drift review, regressions, hotspots</td></tr>
-        <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">enrich_task_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">One-shot task context: architecture, code, findings, changes</td></tr>
+        <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">enrich_task_context</td><td class="py-1.5 pr-3 text-xs text-green-400">read</td><td class="py-1.5 text-xs text-slate-400">One-shot task context: mentioned files, architecture, code &amp; doc search, deps, blast radius, changes</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">register_project</td><td class="py-1.5 pr-3 text-xs text-orange-400">register</td><td class="py-1.5 text-xs text-slate-400">Register a new project for indexing</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">delete_project</td><td class="py-1.5 pr-3 text-xs text-orange-400">register</td><td class="py-1.5 text-xs text-slate-400">Delete a project and all its data</td></tr>
         <tr class="border-b border-slate-700/50"><td class="py-1.5 pr-3 font-mono text-xs text-purple-400">trigger_reindex</td><td class="py-1.5 pr-3 text-xs text-blue-400">index</td><td class="py-1.5 text-xs text-slate-400">Enqueue a reindex job</td></tr>
