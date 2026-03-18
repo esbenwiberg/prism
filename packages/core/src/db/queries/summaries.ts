@@ -39,7 +39,7 @@ export type SummaryRow = typeof summaries.$inferSelect;
 // ---------------------------------------------------------------------------
 
 /**
- * Insert a single summary.
+ * Insert a single summary (upsert on project+level+target).
  */
 export async function insertSummary(
   input: InsertSummaryInput,
@@ -48,19 +48,44 @@ export async function insertSummary(
   const [row] = await db
     .insert(summaries)
     .values(input)
+    .onConflictDoUpdate({
+      target: [summaries.projectId, summaries.level, summaries.targetId],
+      set: {
+        content: input.content,
+        model: input.model,
+        inputHash: input.inputHash,
+        costUsd: input.costUsd,
+        qualityScore: input.qualityScore,
+        demoted: input.demoted,
+      },
+    })
     .returning();
   return row;
 }
 
 /**
- * Bulk insert summaries.
+ * Bulk insert summaries (upsert on project+level+target).
  */
 export async function bulkInsertSummaries(
   inputs: InsertSummaryInput[],
 ): Promise<SummaryRow[]> {
   if (inputs.length === 0) return [];
   const db = getDb();
-  return db.insert(summaries).values(inputs).returning();
+  return db
+    .insert(summaries)
+    .values(inputs)
+    .onConflictDoUpdate({
+      target: [summaries.projectId, summaries.level, summaries.targetId],
+      set: {
+        content: sql`excluded.content`,
+        model: sql`excluded.model`,
+        inputHash: sql`excluded.input_hash`,
+        costUsd: sql`excluded.cost_usd`,
+        qualityScore: sql`excluded.quality_score`,
+        demoted: sql`excluded.demoted`,
+      },
+    })
+    .returning();
 }
 
 /**
