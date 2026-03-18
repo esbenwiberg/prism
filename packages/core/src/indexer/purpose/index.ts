@@ -125,6 +125,8 @@ export async function runPurposeAnalysis(
         model: config.model,
         inputHash,
         costUsd: costUsd.toFixed(4),
+        qualityScore: null,
+        demoted: false,
       },
     ]);
 

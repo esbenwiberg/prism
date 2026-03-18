@@ -57,6 +57,8 @@ export async function runGapAnalysis(
   moduleSummaries: SummaryRow[],
   config: AnalysisConfig,
   budget: BudgetTracker,
+  /** Hash of the last gap analysis input — skip if unchanged. */
+  previousGapHash?: string,
 ): Promise<GapFinding[]> {
   if (budget.exceeded) {
     logger.warn("Budget exceeded — skipping gap analysis");
@@ -65,6 +67,17 @@ export async function runGapAnalysis(
 
   if (!docIntent || !systemSummary) {
     logger.info("Insufficient data for gap analysis — skipping");
+    return [];
+  }
+
+  // Cache check: skip if both intent and system summary are unchanged
+  const gapInputHash = createHash("sha256")
+    .update(docIntent)
+    .update(systemSummary)
+    .digest("hex");
+
+  if (previousGapHash && previousGapHash === gapInputHash) {
+    logger.info("Gap analysis input unchanged — skipping (cached)");
     return [];
   }
 

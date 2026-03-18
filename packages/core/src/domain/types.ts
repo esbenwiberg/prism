@@ -60,7 +60,7 @@ export type FindingSeverity =
   | "info";
 
 /** Granularity level for summaries. */
-export type SummaryLevel = "function" | "file" | "module" | "system";
+export type SummaryLevel = "function" | "file" | "module" | "system" | "doc" | "intent";
 
 /** Status of a background job. */
 export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
@@ -98,6 +98,10 @@ export interface PurposeConfig {
 export interface AnalysisConfig {
   enabled: boolean;
   model: string;
+  /** Model for file-level rollup (default: Haiku — simple aggregation). */
+  fileRollupModel?: string;
+  /** Model for module-level rollup (default: Haiku — moderate reasoning). */
+  moduleRollupModel?: string;
   budgetUsd: number;
 }
 

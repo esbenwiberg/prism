@@ -177,4 +177,10 @@ export interface IndexContext {
    * - non-empty   = only these file paths changed
    */
   changedFiles?: Set<string>;
+  /**
+   * Files that are semantically stale due to dependency changes.
+   * These files' own content didn't change, but a file they import did.
+   * Populated by staleness propagation in the semantic layer.
+   */
+  staleFiles?: Set<string>;
 }

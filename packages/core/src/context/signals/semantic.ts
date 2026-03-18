@@ -11,7 +11,7 @@ import {
   simpleSimilaritySearch,
   type SimilaritySearchResult,
 } from "../../db/queries/embeddings.js";
-import { getProjectFiles } from "../../db/queries/files.js";
+import { getProjectFiles, searchDocContent } from "../../db/queries/files.js";
 import { getSummaryByTargetId } from "../../db/queries/summaries.js";
 import { getExportedSymbolsByFileId } from "../../db/queries/symbols.js";
 import { createEmbedder } from "../../indexer/semantic/embedder.js";
@@ -108,6 +108,172 @@ export async function collectSemanticSignal(
   items.sort((a, b) => b.relevance - a.relevance);
 
   return { heading, priority, items };
+}
+
+// ---------------------------------------------------------------------------
+// Doc-aware partitioned search
+// ---------------------------------------------------------------------------
+
+/** Words in a query that indicate the user wants documentation results. */
+const DOC_BOOST_WORDS = new Set([
+  "how", "why", "what", "guide", "migrate", "setup", "explain",
+  "document", "documentation", "docs", "tutorial", "example",
+  "configure", "install", "convention", "pattern",
+]);
+
+export interface SemanticSearchResult {
+  codeSignal: SignalResult;
+  docSignal: SignalResult;
+}
+
+/**
+ * Run semantic similarity search partitioned into code and doc results.
+ *
+ * Doc results (level = "doc") are separated out and optionally boosted
+ * when the query contains documentation-oriented keywords.
+ */
+export async function collectPartitionedSemanticSignal(
+  options: SemanticSignalOptions,
+): Promise<SemanticSearchResult> {
+  const {
+    projectId,
+    query,
+    limit = 15,
+    heading = "Semantically Related",
+    priority = 4,
+    minScore = 0.35,
+  } = options;
+
+  const config = getConfig();
+  const embedder = createEmbedder(config.semantic);
+  const [queryVector] = await embedder.embed([query]);
+
+  // Fetch more results to allow for partitioning
+  const fetchLimit = Math.ceil(limit * 1.5);
+
+  let results: SimilaritySearchResult[];
+  try {
+    results = await similaritySearch(projectId, queryVector, fetchLimit);
+  } catch {
+    results = await simpleSimilaritySearch(projectId, queryVector, fetchLimit);
+  }
+
+  results = results.filter((r) => r.score >= minScore);
+
+  // Check if query contains doc-boost words
+  const queryWords = query.toLowerCase().split(/[\s,;:!?.()[\]{}"'`]+/);
+  const hasDocIntent = queryWords.some((w) => DOC_BOOST_WORDS.has(w));
+
+  // Keyword matching (shared for both partitions)
+  const keywordData = await findKeywordMatches(projectId, query);
+
+  // Partition results into code and doc
+  const codeResults: SimilaritySearchResult[] = [];
+  const docResults: SimilaritySearchResult[] = [];
+
+  for (const r of results) {
+    if (r.level === "doc") {
+      docResults.push(r);
+    } else {
+      codeResults.push(r);
+    }
+  }
+
+  // Build code items (same logic as collectSemanticSignal)
+  const codeItems: SignalItem[] = codeResults.map((r) => {
+    let relevance = computeRelevance(r.score, r.filePath, options);
+
+    if (r.filePath) {
+      const kwMatch = keywordData.matchedPaths.get(r.filePath);
+      if (kwMatch) {
+        const boost = 0.3 + 0.1 * kwMatch.matchedWords.length;
+        relevance = Math.min(1, relevance + boost);
+      }
+    }
+
+    const label = r.filePath
+      ? `**${r.filePath}**${r.symbolName ? ` \u2014 \`${r.symbolName}\`` : ""} (${r.level})`
+      : `**${r.targetId}** (${r.level})`;
+    const content = `${label}\n${r.summaryContent}`;
+    return { content, relevance };
+  });
+
+  // Add keyword-only matches (code only)
+  const existingCodePaths = new Set(
+    codeResults.map((r) => r.filePath).filter((p): p is string => p != null),
+  );
+  const newKeywordItems = await buildKeywordItems(
+    projectId,
+    keywordData,
+    existingCodePaths,
+    options,
+  );
+  codeItems.push(...newKeywordItems);
+  codeItems.sort((a, b) => b.relevance - a.relevance);
+
+  // Build doc items with optional boost
+  const docItems: SignalItem[] = docResults.map((r) => {
+    let relevance = computeRelevance(r.score, r.filePath, options);
+
+    // Boost doc results when query looks documentation-oriented
+    if (hasDocIntent) {
+      relevance = Math.min(1, relevance + 0.1);
+    }
+
+    const label = `**${r.targetId}** (doc)`;
+    const content = `${label}\n${r.summaryContent}`;
+    return { content, relevance };
+  });
+
+  docItems.sort((a, b) => b.relevance - a.relevance);
+
+  // Full-text fallback: if fewer than 3 doc results from vector search,
+  // run keyword search on doc_content to catch exact terminology matches
+  if (docItems.length < 3) {
+    const searchTerms = extractDiscriminatingWords(query);
+    const existingDocPaths = new Set(
+      docResults.map((r) => r.filePath).filter((p): p is string => p != null),
+    );
+
+    for (const term of searchTerms.slice(0, 3)) {
+      try {
+        const hits = await searchDocContent(projectId, term, 5);
+        for (const hit of hits) {
+          if (existingDocPaths.has(hit.path)) continue;
+          existingDocPaths.add(hit.path);
+
+          // Extract a snippet around the search term
+          const content = hit.docContent ?? "";
+          const termIdx = content.toLowerCase().indexOf(term.toLowerCase());
+          const snippetStart = Math.max(0, termIdx - 100);
+          const snippetEnd = Math.min(content.length, termIdx + 200);
+          const snippet = content.slice(snippetStart, snippetEnd).trim();
+
+          docItems.push({
+            content: `**${hit.path}** (full-text match)\n...${snippet}...`,
+            relevance: 0.5, // Lower than vector matches but still useful
+          });
+        }
+      } catch {
+        // Full-text search may fail on older schemas without the column — skip
+      }
+    }
+
+    docItems.sort((a, b) => b.relevance - a.relevance);
+  }
+
+  return {
+    codeSignal: {
+      heading,
+      priority,
+      items: codeItems,
+    },
+    docSignal: {
+      heading: "Relevant Documentation",
+      priority: 2,
+      items: docItems,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

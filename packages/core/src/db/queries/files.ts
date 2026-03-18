@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, ilike, inArray, like, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { files } from "../schema.js";
 
@@ -195,4 +195,30 @@ export async function updateFileDocContent(
     .update(files)
     .set({ docContent })
     .where(and(eq(files.projectId, projectId), eq(files.path, path)));
+}
+
+/**
+ * Full-text search across doc_content of documentation files.
+ *
+ * Uses simple ILIKE matching (MVP). Returns doc files whose content
+ * contains the search term, ordered by path.
+ */
+export async function searchDocContent(
+  projectId: number,
+  searchTerm: string,
+  limit: number = 10,
+): Promise<FileRow[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(files)
+    .where(
+      and(
+        eq(files.projectId, projectId),
+        eq(files.isDoc, true),
+        isNotNull(files.docContent),
+        ilike(files.docContent, `%${searchTerm}%`),
+      ),
+    )
+    .limit(limit);
 }

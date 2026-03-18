@@ -22,6 +22,7 @@ export {
   deleteFilesByPaths,
   bulkUpsertFiles,
   updateFileDocContent,
+  searchDocContent,
   type UpsertFileInput,
   type FileRow,
 } from "./files.js";

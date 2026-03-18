@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { summaries } from "../schema.js";
 
@@ -26,6 +26,10 @@ export interface InsertSummaryInput {
   inputHash: string | null;
   /** Cost in USD. */
   costUsd: string | null;
+  /** Self-assessed quality score 0.0-1.0. */
+  qualityScore: string | null;
+  /** Whether this summary was demoted due to low quality. */
+  demoted: boolean;
 }
 
 export type SummaryRow = typeof summaries.$inferSelect;

@@ -21,6 +21,8 @@ export interface InsertFindingInput {
   description: string;
   evidence?: unknown;
   suggestion?: string | null;
+  fingerprint?: string | null;
+  confidence?: string | null;
 }
 
 export type FindingRow = typeof findings.$inferSelect;
@@ -48,6 +50,8 @@ export async function bulkInsertFindings(
         description: f.description,
         evidence: f.evidence ?? null,
         suggestion: f.suggestion ?? null,
+        fingerprint: f.fingerprint ?? null,
+        confidence: f.confidence ?? null,
       })),
     )
     .returning();

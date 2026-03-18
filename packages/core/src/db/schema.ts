@@ -143,6 +143,8 @@ export const summaries = pgTable(
     model: text("model"),
     inputHash: text("input_hash"),
     costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+    qualityScore: numeric("quality_score", { precision: 4, scale: 2 }),
+    demoted: boolean("demoted").notNull().default(false),
   },
   (table) => [
     unique("prism_summaries_project_level_target").on(table.projectId, table.level, table.targetId),
@@ -187,6 +189,8 @@ export const findings = pgTable("prism_findings", {
   description: text("description").notNull(),
   evidence: jsonb("evidence"),
   suggestion: text("suggestion"),
+  fingerprint: text("fingerprint"),
+  confidence: numeric("confidence", { precision: 4, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -292,6 +296,8 @@ export const indexRuns = pgTable("prism_index_runs", {
   costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
   durationMs: integer("duration_ms"),
   error: text("error"),
+  /** Per-component cost breakdown for analysis layer runs. */
+  costBreakdown: jsonb("cost_breakdown"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

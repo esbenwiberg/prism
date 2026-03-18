@@ -159,3 +159,9 @@ export {
   parseGitLog,
   type HistoryLayerOptions,
 } from "./history/index.js";
+
+// Staleness propagation
+export {
+  propagateStaleness,
+  type StalenessResult,
+} from "./staleness.js";

@@ -39,6 +39,7 @@ import { getStartedRouter } from "./routes/get-started.js";
 import { apiDocsRouter } from "./routes/api-docs.js";
 import { historyRouter } from "./routes/history.js";
 import { contextExplorerRouter } from "./routes/context-explorer.js";
+import { qualityRouter } from "./routes/quality.js";
 
 /**
  * Create and configure the Express application.
@@ -190,6 +191,7 @@ export function createApp(): express.Express {
   app.use(apiKeysRouter);
   app.use(historyRouter);
   app.use(contextExplorerRouter);
+  app.use(qualityRouter);
   app.use(getStartedRouter);
   app.use(apiDocsRouter);
 

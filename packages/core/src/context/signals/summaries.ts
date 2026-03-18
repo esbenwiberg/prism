@@ -94,9 +94,10 @@ export async function collectModuleSummaries(
 export async function collectArchitectureSummaries(
   projectId: number,
 ): Promise<{ purpose: SignalResult; system: SignalResult; modules: SignalResult }> {
-  const [systemSummaries, moduleSummaries] = await Promise.all([
+  const [systemSummaries, moduleSummaries, intentSummaries] = await Promise.all([
     getSummariesByLevel(projectId, "system"),
     getSummariesByLevel(projectId, "module"),
+    getSummariesByLevel(projectId, "intent"),
   ]);
 
   // Find purpose document (stored as system-level with targetId containing "purpose")
@@ -107,13 +108,21 @@ export async function collectArchitectureSummaries(
     (s) => !s.targetId.toLowerCase().includes("purpose"),
   );
 
+  // Include persisted project intent alongside purpose if available
+  const intentSummary = intentSummaries[0];
+  const purposeItems = [];
+  if (purposeSummary) {
+    purposeItems.push({ content: purposeSummary.content, relevance: 1.0 });
+  }
+  if (intentSummary && (!purposeSummary || intentSummary.content !== purposeSummary.content)) {
+    purposeItems.push({ content: intentSummary.content, relevance: 0.9 });
+  }
+
   return {
     purpose: {
       heading: "Purpose",
       priority: 1,
-      items: purposeSummary
-        ? [{ content: purposeSummary.content, relevance: 1.0 }]
-        : [],
+      items: purposeItems,
     },
     system: {
       heading: "System Architecture",

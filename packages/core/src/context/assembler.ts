@@ -38,7 +38,11 @@ import {
   getRecentCommitsByFileId,
   type CommitRow,
 } from "../db/queries/commits.js";
-import { collectSemanticSignal } from "./signals/semantic.js";
+import { collectSemanticSignal, collectPartitionedSemanticSignal } from "./signals/semantic.js";
+import {
+  collectExplicitMentionSignal,
+  collectMentionDependencies,
+} from "./signals/mentions.js";
 import {
   getCoChangedFiles,
   getChangeHotspots,
@@ -617,8 +621,11 @@ export async function assembleTaskContext(
 ): Promise<ContextResponse> {
   const { projectId, query, maxTokens = 16000 } = input;
 
-  // 1. Semantic search — find relevant files/symbols
-  const semanticSignal = await collectSemanticSignal({
+  // 0. Extract explicitly mentioned files — these are guaranteed in response
+  const mentionResult = await collectExplicitMentionSignal({ projectId, query });
+
+  // 1. Semantic search — find relevant files/symbols (partitioned: code + docs)
+  const { codeSignal: semanticSignal, docSignal } = await collectPartitionedSemanticSignal({
     projectId,
     query,
     limit: 20,
@@ -635,6 +642,14 @@ export async function assembleTaskContext(
     .map((p) => fileByPath.get(p))
     .filter((f): f is FileRow => f != null);
 
+  // Merge mentioned file IDs into blast radius sources (so their deps are visible)
+  const blastSourceIds = [
+    ...new Set([
+      ...topFileIds.map((f) => f.id),
+      ...mentionResult.resolvedFileIds,
+    ]),
+  ];
+
   // 4. Fan-out: collect signals in parallel
   const [archSummaries, recentProjectCommits, blastRadius] =
     await Promise.all([
@@ -642,7 +657,7 @@ export async function assembleTaskContext(
       getRecentCommitsByProjectId(projectId, 10),
       collectAggregatedBlastRadius({
         projectId,
-        sourceFileIds: topFileIds.map((f) => f.id),
+        sourceFileIds: blastSourceIds,
       }),
     ]);
 
@@ -675,11 +690,30 @@ export async function assembleTaskContext(
 
   const signals: SignalResult[] = [];
 
+  // Priority 1: Explicitly mentioned files (guaranteed in context)
+  if (mentionResult.signal.items.length > 0) {
+    signals.push(mentionResult.signal);
+  }
+
   // Priority 1: Architecture (purpose + system summary)
   signals.push(
     { ...archSummaries.purpose, priority: 1 },
     { ...archSummaries.system, priority: 1 },
   );
+
+  // Priority 2: Forward deps of mentioned files + shared deps
+  if (mentionResult.resolvedFileIds.length > 0) {
+    const mentionDeps = await collectMentionDependencies({
+      projectId,
+      resolvedFileIds: mentionResult.resolvedFileIds,
+    });
+    if (mentionDeps.forwardDeps.items.length > 0) {
+      signals.push(mentionDeps.forwardDeps);
+    }
+    if (mentionDeps.sharedDeps.items.length > 0) {
+      signals.push(mentionDeps.sharedDeps);
+    }
+  }
 
   // Priority 2: Semantic search results (includes keyword-augmented files)
   signals.push({
@@ -687,6 +721,11 @@ export async function assembleTaskContext(
     heading: "Relevant Code",
     priority: 2,
   });
+
+  // Priority 2: Documentation results (if any doc embeddings matched)
+  if (docSignal.items.length > 0) {
+    signals.push(docSignal);
+  }
 
   // Priority 3: Aggregated blast radius (reverse deps across all relevant files)
   if (blastRadius.items.length > 0) {

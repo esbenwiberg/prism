@@ -54,6 +54,16 @@ const SONNET_INPUT_COST_PER_TOKEN = 0.000003; // $3.00 / 1M tokens
 /** Cost per output token for Claude Sonnet (approximate). */
 const SONNET_OUTPUT_COST_PER_TOKEN = 0.000015; // $15.00 / 1M tokens
 
+/** Cost per input token for Claude Haiku (approximate). */
+const HAIKU_INPUT_COST_PER_TOKEN = 0.0000008; // $0.80 / 1M tokens
+/** Cost per output token for Claude Haiku (approximate). */
+const HAIKU_OUTPUT_COST_PER_TOKEN = 0.000004; // $4.00 / 1M tokens
+
+/** Default model for file-level rollup (Haiku — simple aggregation). */
+const DEFAULT_FILE_ROLLUP_MODEL = "claude-haiku-4-5-20251001";
+/** Default model for module-level rollup (Haiku — moderate reasoning). */
+const DEFAULT_MODULE_ROLLUP_MODEL = "claude-haiku-4-5-20251001";
+
 // ---------------------------------------------------------------------------
 // Prompt loading
 // ---------------------------------------------------------------------------
@@ -93,11 +103,74 @@ export function resetTemplateCache(): void {
 // Helper
 // ---------------------------------------------------------------------------
 
-function computeCost(inputTokens: number, outputTokens: number): number {
-  return (
-    inputTokens * SONNET_INPUT_COST_PER_TOKEN +
-    outputTokens * SONNET_OUTPUT_COST_PER_TOKEN
-  );
+function computeCost(inputTokens: number, outputTokens: number, model?: string): number {
+  const isHaiku = model?.includes("haiku");
+  const inputCost = isHaiku ? HAIKU_INPUT_COST_PER_TOKEN : SONNET_INPUT_COST_PER_TOKEN;
+  const outputCost = isHaiku ? HAIKU_OUTPUT_COST_PER_TOKEN : SONNET_OUTPUT_COST_PER_TOKEN;
+  return inputTokens * inputCost + outputTokens * outputCost;
+}
+
+// ---------------------------------------------------------------------------
+// Summary delta detection
+// ---------------------------------------------------------------------------
+
+/** Max batch size for batched file rollups (files per LLM call). */
+const MAX_BATCH_FILES = 10;
+/** Max combined input tokens for a batch (rough estimate: 4 chars/token). */
+const MAX_BATCH_CHARS = 16000; // ~4000 tokens
+/** Threshold for trivial delta — skip rollup if fewer than this % of summaries changed. */
+const TRIVIAL_DELTA_THRESHOLD = 0.1;
+
+/**
+ * Compute the summary delta score for a file: what fraction of its function
+ * summaries actually changed content?
+ *
+ * Returns a number 0-1 where 0 means nothing changed and 1 means everything changed.
+ */
+export function computeSummaryDelta(
+  filePath: string,
+  currentSummaries: SummaryRow[],
+  previousSummaries: Map<string, SummaryRow>,
+): number {
+  if (currentSummaries.length === 0) return 1; // New file, always dirty
+
+  let changedCount = 0;
+  for (const summary of currentSummaries) {
+    const prev = previousSummaries.get(summary.targetId);
+    if (!prev) {
+      changedCount++; // New symbol
+      continue;
+    }
+    if (prev.inputHash !== summary.inputHash) {
+      // Content actually changed — check if it's a trivial edit
+      const editDistance = computeEditRatio(prev.content, summary.content);
+      if (editDistance > 0.15) {
+        changedCount++;
+      }
+    }
+  }
+
+  return currentSummaries.length > 0 ? changedCount / currentSummaries.length : 1;
+}
+
+/**
+ * Compute the ratio of character changes between two strings.
+ * Uses a cheap length-based heuristic rather than full edit distance.
+ */
+function computeEditRatio(a: string, b: string): number {
+  if (a === b) return 0;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 0;
+  // Quick heuristic: length difference + sampling character changes
+  const lenDiff = Math.abs(a.length - b.length);
+  const minLen = Math.min(a.length, b.length);
+  let charDiffs = 0;
+  const step = Math.max(1, Math.floor(minLen / 50)); // Sample ~50 positions
+  for (let i = 0; i < minLen; i += step) {
+    if (a[i] !== b[i]) charDiffs++;
+  }
+  const sampledDiffRate = minLen > 0 ? charDiffs / Math.ceil(minLen / step) : 0;
+  return Math.min(1, (lenDiff / maxLen) + sampledDiffRate);
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +184,10 @@ function computeCost(inputTokens: number, outputTokens: number): number {
  * Clean files reuse their existing summary. An input-hash check provides a
  * secondary safety net even for dirty files — if the prompt hasn't changed,
  * the existing summary is reused.
+ *
+ * Optimisations:
+ * - **Delta detection**: skips rollup if < 10% of function summaries changed
+ * - **Batching**: groups small files (< 5 symbols) into single LLM calls
  */
 export async function rollupFileSummaries(
   projectId: number,
@@ -124,6 +201,8 @@ export async function rollupFileSummaries(
 ): Promise<FileRollupResult> {
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-file.md");
+  // Tiered model: file rollup uses Haiku by default (simple aggregation, ~10x cheaper)
+  const fileModel = config.fileRollupModel ?? DEFAULT_FILE_ROLLUP_MODEL;
 
   // Group symbol summaries by file path
   const byFile = new Map<string, SummaryRow[]>();
@@ -142,23 +221,39 @@ export async function rollupFileSummaries(
   const dirtyFilePaths = new Set<string>();
   let processedCount = 0;
 
-  for (const [filePath, fileFnSummaries] of byFile) {
-    if (budget.exceeded) {
-      logger.warn("Budget exceeded — stopping file rollup");
-      break;
-    }
+  // Phase 1: Classify files — skip clean files and trivial deltas
+  interface PendingFile {
+    filePath: string;
+    fnSummaries: SummaryRow[];
+    prompt: string;
+    inputHash: string;
+    targetId: string;
+  }
+  const pendingFiles: PendingFile[] = [];
 
+  for (const [filePath, fileFnSummaries] of byFile) {
     const targetId = `file:${filePath}`;
     const existingRow = existingSummaries?.get(targetId);
 
-    // Skip clean files — if dirtyFiles is defined and this file isn't in it,
-    // AND we have an existing summary, just reuse it.
+    // Skip clean files
     if (dirtyFiles !== undefined && !dirtyFiles.has(filePath) && existingRow) {
       results.push(existingRow);
       processedCount++;
       onProgress?.(processedCount);
       logger.debug({ filePath }, "Reusing existing file summary (clean file)");
       continue;
+    }
+
+    // Delta detection: skip if < 10% of function summaries changed meaningfully
+    if (existingRow && existingSummaries) {
+      const delta = computeSummaryDelta(filePath, fileFnSummaries, existingSummaries);
+      if (delta < TRIVIAL_DELTA_THRESHOLD) {
+        results.push(existingRow);
+        processedCount++;
+        onProgress?.(processedCount);
+        logger.debug({ filePath, delta: delta.toFixed(2) }, "Skipping file rollup (trivial delta)");
+        continue;
+      }
     }
 
     const fileInfo = filePathMap.get(filePath) ?? { language: "unknown", symbolCount: fileFnSummaries.length };
@@ -173,12 +268,10 @@ export async function rollupFileSummaries(
       .replace(/\{\{symbolCount\}\}/g, String(fileInfo.symbolCount))
       .replace(/\{\{symbolSummaries\}\}/g, symbolSummariesText);
 
-    // If no template loaded, use fallback
     if (!prompt.trim()) {
       prompt = `Summarise the following file based on its symbol summaries:\n\nFile: ${filePath}\n\n${symbolSummariesText}`;
     }
 
-    // Input hash safety net — if the prompt is identical, skip the LLM call
     const inputHash = createHash("sha256").update(prompt).digest("hex");
     if (existingRow?.inputHash === inputHash) {
       results.push(existingRow);
@@ -188,52 +281,241 @@ export async function rollupFileSummaries(
       continue;
     }
 
-    try {
-      // Delete old summary before inserting new one
-      await deleteSummariesByTargets(projectId, "file", [targetId]);
+    pendingFiles.push({ filePath, fnSummaries: fileFnSummaries, prompt, inputHash, targetId });
+  }
 
-      const response = await client.messages.create({
-        model: config.model,
-        max_tokens: 500,
-        messages: [{ role: "user", content: prompt }],
-      });
+  // Phase 2: Separate small files (batchable) from large files
+  const smallFiles = pendingFiles.filter((f) => f.fnSummaries.length < 5);
+  const largeFiles = pendingFiles.filter((f) => f.fnSummaries.length >= 5);
 
-      const textBlock = response.content.find((block) => block.type === "text");
-      const content = textBlock && "text" in textBlock ? textBlock.text : "";
-      const costUsd = computeCost(
-        response.usage.input_tokens,
-        response.usage.output_tokens,
-      );
-      budget.record(costUsd);
+  // Phase 3: Batch small files into combined LLM calls
+  const batches: PendingFile[][] = [];
+  let currentBatch: PendingFile[] = [];
+  let currentBatchChars = 0;
 
-      const inserted = await bulkInsertSummaries([{
-        projectId,
-        level: "file",
-        targetId,
-        content,
-        model: config.model,
-        inputHash,
-        costUsd: costUsd.toFixed(4),
-      }]);
+  for (const file of smallFiles) {
+    const fileChars = file.prompt.length;
+    if (
+      currentBatch.length >= MAX_BATCH_FILES ||
+      (currentBatchChars + fileChars > MAX_BATCH_CHARS && currentBatch.length > 0)
+    ) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBatchChars = 0;
+    }
+    currentBatch.push(file);
+    currentBatchChars += fileChars;
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
 
-      results.push(...inserted);
-      dirtyFilePaths.add(filePath);
+  // Process batched small files
+  for (const batch of batches) {
+    if (budget.exceeded) {
+      logger.warn("Budget exceeded — stopping file rollup");
+      break;
+    }
+
+    if (batch.length === 1) {
+      // Single file — process normally (no batching overhead)
+      const file = batch[0];
+      const result = await rollupSingleFile(client, projectId, file, fileModel, budget);
+      if (result) {
+        results.push(result);
+        dirtyFilePaths.add(file.filePath);
+      }
       processedCount++;
       onProgress?.(processedCount);
+    } else {
+      // Multi-file batch — combine into one prompt
+      const batchPrompt = batch
+        .map((f, i) => `--- FILE ${i + 1}: ${f.filePath} ---\n${f.prompt}`)
+        .join("\n\n");
 
-      logger.debug(
-        { filePath, costUsd: costUsd.toFixed(4) },
-        "File summary generated",
-      );
-    } catch (err) {
-      logger.error(
-        { filePath, error: err instanceof Error ? err.message : String(err) },
-        "Failed to generate file summary",
-      );
+      const combinedPrompt = `Summarise each of the following files separately. For each file, write the file path on its own line followed by the summary.\n\n${batchPrompt}`;
+
+      try {
+        const targetIds = batch.map((f) => f.targetId);
+        await deleteSummariesByTargets(projectId, "file", targetIds);
+
+        const response = await client.messages.create({
+          model: fileModel,
+          max_tokens: 500 * batch.length,
+          messages: [{ role: "user", content: combinedPrompt }],
+        });
+
+        const textBlock = response.content.find((block) => block.type === "text");
+        const responseText = textBlock && "text" in textBlock ? textBlock.text : "";
+        const costUsd = computeCost(
+          response.usage.input_tokens,
+          response.usage.output_tokens,
+          fileModel,
+        );
+        budget.record(costUsd);
+
+        // Parse batch response — split by file markers or file paths
+        const perFileCost = costUsd / batch.length;
+        const fileSummaries = parseBatchResponse(responseText, batch);
+
+        for (let i = 0; i < batch.length; i++) {
+          const file = batch[i];
+          const content = fileSummaries[i] ?? responseText; // Fallback: use full response
+
+          const inserted = await bulkInsertSummaries([{
+            projectId,
+            level: "file",
+            targetId: file.targetId,
+            content,
+            model: fileModel,
+            inputHash: file.inputHash,
+            costUsd: perFileCost.toFixed(4),
+            qualityScore: null,
+            demoted: false,
+          }]);
+
+          results.push(...inserted);
+          dirtyFilePaths.add(file.filePath);
+          processedCount++;
+          onProgress?.(processedCount);
+        }
+
+        logger.debug(
+          { batchSize: batch.length, costUsd: costUsd.toFixed(4) },
+          "Batch file rollup complete",
+        );
+      } catch (err) {
+        logger.error(
+          { batchSize: batch.length, error: err instanceof Error ? err.message : String(err) },
+          "Failed batch file rollup — falling back to individual",
+        );
+        // Fallback: process individually
+        for (const file of batch) {
+          const result = await rollupSingleFile(client, projectId, file, fileModel, budget);
+          if (result) {
+            results.push(result);
+            dirtyFilePaths.add(file.filePath);
+          }
+          processedCount++;
+          onProgress?.(processedCount);
+        }
+      }
     }
   }
 
+  // Phase 4: Process large files individually
+  for (const file of largeFiles) {
+    if (budget.exceeded) {
+      logger.warn("Budget exceeded — stopping file rollup");
+      break;
+    }
+
+    const result = await rollupSingleFile(client, projectId, file, fileModel, budget);
+    if (result) {
+      results.push(result);
+      dirtyFilePaths.add(file.filePath);
+    }
+    processedCount++;
+    onProgress?.(processedCount);
+  }
+
   return { results, dirtyFilePaths };
+}
+
+/** Process a single file rollup via LLM. */
+async function rollupSingleFile(
+  client: ReturnType<typeof createAnthropicClient>,
+  projectId: number,
+  file: { filePath: string; prompt: string; inputHash: string; targetId: string },
+  model: string,
+  budget: BudgetTracker,
+): Promise<SummaryRow | null> {
+  try {
+    await deleteSummariesByTargets(projectId, "file", [file.targetId]);
+
+    const response = await client.messages.create({
+      model,
+      max_tokens: 500,
+      messages: [{ role: "user", content: file.prompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    const content = textBlock && "text" in textBlock ? textBlock.text : "";
+    const costUsd = computeCost(
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+      model,
+    );
+    budget.record(costUsd);
+
+    const inserted = await bulkInsertSummaries([{
+      projectId,
+      level: "file",
+      targetId: file.targetId,
+      content,
+      model,
+      inputHash: file.inputHash,
+      costUsd: costUsd.toFixed(4),
+      qualityScore: null,
+      demoted: false,
+    }]);
+
+    logger.debug(
+      { filePath: file.filePath, costUsd: costUsd.toFixed(4) },
+      "File summary generated",
+    );
+
+    return inserted[0] ?? null;
+  } catch (err) {
+    logger.error(
+      { filePath: file.filePath, error: err instanceof Error ? err.message : String(err) },
+      "Failed to generate file summary",
+    );
+    return null;
+  }
+}
+
+/**
+ * Parse a batched LLM response into per-file summaries.
+ *
+ * Looks for file path markers in the response to split it.
+ */
+function parseBatchResponse(
+  responseText: string,
+  batch: Array<{ filePath: string }>,
+): string[] {
+  const summaries: string[] = [];
+
+  for (let i = 0; i < batch.length; i++) {
+    const currentPath = batch[i].filePath;
+    const nextPath = batch[i + 1]?.filePath;
+
+    // Find this file's section in the response
+    const startIdx = responseText.indexOf(currentPath);
+    if (startIdx === -1) {
+      summaries.push(""); // File not found in response
+      continue;
+    }
+
+    const contentStart = responseText.indexOf("\n", startIdx);
+    if (contentStart === -1) {
+      summaries.push("");
+      continue;
+    }
+
+    let endIdx: number;
+    if (nextPath) {
+      const nextIdx = responseText.indexOf(nextPath, contentStart);
+      // Walk back to find the start of the next file's line
+      endIdx = nextIdx !== -1
+        ? responseText.lastIndexOf("\n", nextIdx)
+        : responseText.length;
+    } else {
+      endIdx = responseText.length;
+    }
+
+    summaries.push(responseText.slice(contentStart + 1, endIdx).trim());
+  }
+
+  return summaries;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +537,8 @@ export async function rollupModuleSummaries(
 ): Promise<ModuleRollupResult> {
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-module.md");
+  // Tiered model: module rollup uses Haiku by default (moderate reasoning)
+  const moduleModel = config.moduleRollupModel ?? DEFAULT_MODULE_ROLLUP_MODEL;
 
   // Group file summaries by directory (module)
   const byModule = new Map<string, SummaryRow[]>();
@@ -314,7 +598,7 @@ export async function rollupModuleSummaries(
       await deleteSummariesByTargets(projectId, "module", [targetId]);
 
       const response = await client.messages.create({
-        model: config.model,
+        model: moduleModel,
         max_tokens: 600,
         messages: [{ role: "user", content: prompt }],
       });
@@ -324,6 +608,7 @@ export async function rollupModuleSummaries(
       const costUsd = computeCost(
         response.usage.input_tokens,
         response.usage.output_tokens,
+        moduleModel,
       );
       budget.record(costUsd);
 
@@ -332,9 +617,11 @@ export async function rollupModuleSummaries(
         level: "module",
         targetId,
         content,
-        model: config.model,
+        model: moduleModel,
         inputHash,
         costUsd: costUsd.toFixed(4),
+        qualityScore: null,
+        demoted: false,
       }]);
 
       results.push(...inserted);
@@ -422,6 +709,7 @@ export async function rollupSystemSummary(
     const costUsd = computeCost(
       response.usage.input_tokens,
       response.usage.output_tokens,
+      config.model,
     );
     budget.record(costUsd);
 
@@ -433,6 +721,8 @@ export async function rollupSystemSummary(
       model: config.model,
       inputHash,
       costUsd: costUsd.toFixed(4),
+      qualityScore: null,
+      demoted: false,
     }]);
 
     logger.info(
