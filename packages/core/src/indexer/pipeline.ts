@@ -1571,12 +1571,18 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
     }
 
     // File-level rollup — update progress after each file
+    // Default file/module rollup models to the semantic model (haiku-tier) unless explicitly overridden
+    const analysisWithRollupDefaults = {
+      ...config.analysis,
+      fileRollupModel: config.analysis.fileRollupModel ?? config.semantic.model,
+      moduleRollupModel: config.analysis.moduleRollupModel ?? config.semantic.model,
+    };
     logger.info({ projectId: project.id }, "Analysis: starting file rollup");
     const fileRollup: FileRollupResult = await rollupFileSummaries(
       project.id,
       functionSummaries,
       filePathMap,
-      config.analysis,
+      analysisWithRollupDefaults,
       budget,
       (filesProcessed) => updateIndexRunProgress(indexRun.id, filesProcessed),
       dirtyFiles,
@@ -1611,7 +1617,7 @@ async function executeAnalysisLayer(context: IndexContext): Promise<LayerResult>
     const moduleRollup: ModuleRollupResult = await rollupModuleSummaries(
       project.id,
       fileRollup.results,
-      config.analysis,
+      analysisWithRollupDefaults,
       budget,
       dirtyModules,
       existingModuleSummaries,

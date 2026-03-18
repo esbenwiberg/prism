@@ -59,10 +59,12 @@ const HAIKU_INPUT_COST_PER_TOKEN = 0.0000008; // $0.80 / 1M tokens
 /** Cost per output token for Claude Haiku (approximate). */
 const HAIKU_OUTPUT_COST_PER_TOKEN = 0.000004; // $4.00 / 1M tokens
 
-/** Default model for file-level rollup (Haiku — simple aggregation). */
-const DEFAULT_FILE_ROLLUP_MODEL = "claude-haiku-4-5-20251001";
-/** Default model for module-level rollup (Haiku — moderate reasoning). */
-const DEFAULT_MODULE_ROLLUP_MODEL = "claude-haiku-4-5-20251001";
+/**
+ * Fallback model for file/module rollup when neither fileRollupModel/moduleRollupModel
+ * nor the top-level analysis.model is configured. In practice the top-level model
+ * (set via the settings UI) should always win — these are last-resort defaults.
+ */
+const LAST_RESORT_ROLLUP_MODEL = "claude-haiku-4-5-20251001";
 
 // ---------------------------------------------------------------------------
 // Prompt loading
@@ -202,7 +204,7 @@ export async function rollupFileSummaries(
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-file.md");
   // Tiered model: file rollup uses Haiku by default (simple aggregation, ~10x cheaper)
-  const fileModel = config.fileRollupModel ?? DEFAULT_FILE_ROLLUP_MODEL;
+  const fileModel = config.fileRollupModel ?? config.model ?? LAST_RESORT_ROLLUP_MODEL;
 
   // Group symbol summaries by file path
   const byFile = new Map<string, SummaryRow[]>();
@@ -538,7 +540,7 @@ export async function rollupModuleSummaries(
   const client = createAnthropicClient();
   const template = loadTemplate("summarize-module.md");
   // Tiered model: module rollup uses Haiku by default (moderate reasoning)
-  const moduleModel = config.moduleRollupModel ?? DEFAULT_MODULE_ROLLUP_MODEL;
+  const moduleModel = config.moduleRollupModel ?? config.model ?? LAST_RESORT_ROLLUP_MODEL;
 
   // Group file summaries by directory (module)
   const byModule = new Map<string, SummaryRow[]>();
