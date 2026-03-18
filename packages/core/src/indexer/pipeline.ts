@@ -44,7 +44,7 @@ import type { LayerName, Project } from "../domain/types.js";
 import { detectLanguage } from "./structural/languages.js";
 import { parseSource, initTreeSitter } from "./structural/parser.js";
 import { extractSymbols } from "./structural/extractor.js";
-import { extractDependencies } from "./structural/graph.js";
+import { extractDependencies, extractCSharpNamespace, resolveCSharpNamespaces } from "./structural/graph.js";
 import { computeComplexity, computeFileMetrics } from "./structural/metrics.js";
 
 // Docs layer imports
@@ -249,13 +249,20 @@ async function getChangedFiles(
  * 3. Compute complexity
  * 4. Extract dependencies
  */
+interface StructuralLayerOutput {
+  results: StructuralFileResult[];
+  /** C# file path → declared namespace (for resolving `using` directives). */
+  csharpNamespaceMap: Map<string, string>;
+}
+
 async function runStructuralLayer(
   files: FileEntry[],
   projectFiles: ReadonlySet<string>,
-): Promise<StructuralFileResult[]> {
+): Promise<StructuralLayerOutput> {
   await initTreeSitter();
 
   const results: StructuralFileResult[] = [];
+  const csharpNamespaceMap = new Map<string, string>();
 
   for (const file of files) {
     if (!file.language) {
@@ -287,6 +294,14 @@ async function runStructuralLayer(
         projectFiles,
       );
 
+      // Extract C# namespace declarations for later resolution
+      if (file.language === "c_sharp") {
+        const ns = extractCSharpNamespace(rootNode);
+        if (ns) {
+          csharpNamespaceMap.set(file.path, ns);
+        }
+      }
+
       tree.delete();
 
       results.push({ file, symbols, dependencies: deps, complexity });
@@ -304,7 +319,7 @@ async function runStructuralLayer(
     }
   }
 
-  return results;
+  return { results, csharpNamespaceMap };
 }
 
 // ---------------------------------------------------------------------------
@@ -700,10 +715,17 @@ async function executeStructuralLayer(
 
   try {
     // Run structural analysis
-    const structuralResults = await runStructuralLayer(
-      filesToIndex,
-      projectFileSet,
-    );
+    const { results: structuralResults, csharpNamespaceMap } =
+      await runStructuralLayer(filesToIndex, projectFileSet);
+
+    // Resolve C# using directives → file paths via namespace map
+    if (csharpNamespaceMap.size > 0) {
+      resolveCSharpNamespaces(structuralResults, csharpNamespaceMap);
+      logger.info(
+        { namespaces: csharpNamespaceMap.size },
+        "Resolved C# namespace dependencies",
+      );
+    }
 
     // Collect all edges for metrics computation
     const allEdges: DependencyEdge[] = structuralResults.flatMap(
