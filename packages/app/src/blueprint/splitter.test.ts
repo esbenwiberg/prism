@@ -19,6 +19,8 @@ function mockFinding(overrides: Partial<FindingRow> = {}): FindingRow {
     evidence: null,
     suggestion: null,
     createdAt: new Date(),
+    fingerprint: null,
+    confidence: null,
     ...overrides,
   };
 }
@@ -34,6 +36,8 @@ function mockSummary(overrides: Partial<SummaryRow> = {}): SummaryRow {
     model: null,
     inputHash: null,
     costUsd: null,
+    qualityScore: null,
+    demoted: false,
     ...overrides,
   };
 }

@@ -222,8 +222,39 @@ describe("executeJob — blueprint type", () => {
     const project = makeProject();
     mockGetProject.mockResolvedValue(project as any);
     mockGenerateBlueprint.mockResolvedValue({
-      plan: { id: 1, title: "Test Plan" },
-      phases: [{ id: 1, title: "Phase 1" }],
+      plan: {
+        id: 1,
+        title: "Test Plan",
+        projectId: 42,
+        createdAt: new Date(),
+        costUsd: null,
+        goal: null,
+        summary: "Test summary",
+        nonGoals: null,
+        acceptanceCriteria: null,
+        risks: null,
+        model: null,
+      },
+      phases: [
+        {
+          phase: {
+            id: 1,
+            title: "Phase 1",
+            projectId: 42,
+            status: "draft",
+            createdAt: new Date(),
+            costUsd: null,
+            intent: null,
+            model: null,
+            planId: 1,
+            phaseOrder: 1,
+            milestoneCount: null,
+            notes: null,
+            chatHistory: null,
+          },
+          milestones: [],
+        },
+      ],
     });
 
     const result = await executeJob(
