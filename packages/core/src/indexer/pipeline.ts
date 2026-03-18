@@ -19,6 +19,7 @@ import { getConfig } from "../domain/config.js";
 import {
   upsertFile,
   fileNeedsReindex,
+  deleteFilesByPaths,
   deleteSymbolsByFileId,
   deleteDependenciesBySourceFileId,
   bulkInsertSymbols,
@@ -722,10 +723,53 @@ async function executeStructuralLayer(
     "Files selected for indexing",
   );
 
+  // Detect deleted files: DB has rows for files that no longer exist on disk.
+  // Delete them (CASCADE cleans up symbols + dependencies) and mark their
+  // summaries/embeddings for cleanup in downstream layers.
+  if (!fullReindex) {
+    const existingDbFiles = await getProjectFiles(project.id);
+    const diskPaths = new Set(allFiles.map((f) => f.path));
+    const deletedPaths = existingDbFiles
+      .map((f) => f.path)
+      .filter((p) => !diskPaths.has(p));
+
+    if (deletedPaths.length > 0) {
+      logger.info(
+        { count: deletedPaths.length, sample: deletedPaths.slice(0, 5) },
+        "Cleaning up deleted files",
+      );
+      await deleteFilesByPaths(project.id, deletedPaths);
+
+      // Clean up summaries whose targetId starts with a deleted file path.
+      // Function-level: "filePath:symbolName:symbolKind"
+      // File-level: "file:filePath"
+      const allSummaries = await getSummariesByLevel(project.id, "function");
+      const orphanedTargetIds = allSummaries
+        .filter((s) => {
+          const parts = s.targetId.split(":");
+          const filePath = parts.slice(0, -2).join(":");
+          return deletedPaths.includes(filePath);
+        })
+        .map((s) => s.targetId);
+
+      if (orphanedTargetIds.length > 0) {
+        await deleteSummariesByTargets(project.id, "function", orphanedTargetIds);
+      }
+
+      // File-level summaries
+      const fileTargetIds = deletedPaths.map((p) => `file:${p}`);
+      await deleteSummariesByTargets(project.id, "file", fileTargetIds);
+
+      // Track deleted paths so downstream layers re-roll up affected modules
+      context.deletedFiles = new Set(deletedPaths);
+    }
+  }
+
   // Expose changed files to downstream layers (analysis uses this for dirty-flag propagation)
+  // Include deleted files so their modules get re-rolled up
   context.changedFiles = fullReindex
     ? undefined
-    : new Set(filesToIndex.map((f) => f.path));
+    : new Set([...filesToIndex.map((f) => f.path), ...(context.deletedFiles ?? [])]);
 
   // Create index run
   const indexRun = await createIndexRun(

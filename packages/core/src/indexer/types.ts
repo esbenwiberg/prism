@@ -183,4 +183,11 @@ export interface IndexContext {
    * Populated by staleness propagation in the semantic layer.
    */
   staleFiles?: Set<string>;
+  /**
+   * Files that were deleted from disk since the last index run.
+   * Their DB rows (files, symbols, deps) and summaries have been cleaned up
+   * in the structural layer. Included in changedFiles so downstream layers
+   * re-roll up affected modules.
+   */
+  deletedFiles?: Set<string>;
 }
