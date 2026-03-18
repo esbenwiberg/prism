@@ -408,10 +408,12 @@ apiRouter.post("/api/projects/:owner/:repo/context/review", requireApiKey, requi
 
 apiRouter.post("/api/projects/:owner/:repo/context/enrich", requireApiKey, requirePermission("read"), async (req, res) => {
   const slug = `${req.params.owner}/${req.params.repo}`;
+  logger.debug({ slug, owner: req.params.owner, repo: req.params.repo }, "Enrich request received");
   const project = await getProjectBySlug(slug);
-  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!project) { logger.warn({ slug }, "Enrich 404: no project matching slug"); res.status(404).json({ error: "Project not found", slug }); return; }
   if (!INDEXED_STATUSES.has(project.indexStatus)) {
-    res.status(404).json({ error: "Project not yet indexed" });
+    logger.warn({ slug, indexStatus: project.indexStatus }, "Enrich 404: project not indexed");
+    res.status(422).json({ error: "Project not yet indexed", indexStatus: project.indexStatus });
     return;
   }
 

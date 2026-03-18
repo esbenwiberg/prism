@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { projects } from "../schema.js";
 import type { Project, IndexStatus } from "../../domain/types.js";
@@ -122,7 +122,7 @@ export async function getProjectBySlug(
   const [row] = await db
     .select()
     .from(projects)
-    .where(eq(projects.slug, slug));
+    .where(sql`lower(trim(${projects.slug})) = lower(trim(${slug}))`);
   return row ? toProject(row) : undefined;
 }
 
