@@ -28,34 +28,39 @@ export const projectRouter = Router();
 // ---------------------------------------------------------------------------
 
 projectRouter.get("/projects/:id", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
-    res.status(400).send("Invalid project ID");
-    return;
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).send("Invalid project ID");
+      return;
+    }
+
+    const project = await getProject(id);
+    if (!project) {
+      res.status(404).send("Project not found");
+      return;
+    }
+
+    const findingsCount = await countFindingsByProjectId(id);
+    const userName = req.session.user?.name ?? "User";
+    const jobs = await getJobsByProjectId(id);
+    const indexRuns = await getIndexRunsByProjectId(id);
+
+    // Latest job is the last one (jobs ordered by createdAt ascending)
+    const latestJob = jobs.length > 0 ? jobs[jobs.length - 1] : null;
+
+    const data = { project, findingsCount, userName, latestJob, indexRuns };
+
+    if (req.headers["hx-request"]) {
+      res.send(projectFragment(data));
+      return;
+    }
+
+    res.send(projectPage(data));
+  } catch (err) {
+    logger.error({ err }, "Failed to load project detail");
+    res.status(500).send("Failed to load project. Check that database migrations are up to date.");
   }
-
-  const project = await getProject(id);
-  if (!project) {
-    res.status(404).send("Project not found");
-    return;
-  }
-
-  const findingsCount = await countFindingsByProjectId(id);
-  const userName = req.session.user?.name ?? "User";
-  const jobs = await getJobsByProjectId(id);
-  const indexRuns = await getIndexRunsByProjectId(id);
-
-  // Latest job is the last one (jobs ordered by createdAt ascending)
-  const latestJob = jobs.length > 0 ? jobs[jobs.length - 1] : null;
-
-  const data = { project, findingsCount, userName, latestJob, indexRuns };
-
-  if (req.headers["hx-request"]) {
-    res.send(projectFragment(data));
-    return;
-  }
-
-  res.send(projectPage(data));
 });
 
 // ---------------------------------------------------------------------------

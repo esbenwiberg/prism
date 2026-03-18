@@ -4,7 +4,7 @@
  * All functions use the shared database connection from `getDb()`.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../connection.js";
 import { findings } from "../schema.js";
 import type { FindingCategory, FindingSeverity } from "../../domain/types.js";
@@ -108,9 +108,9 @@ export async function countFindingsByProjectId(
   projectId: number,
 ): Promise<number> {
   const db = getDb();
-  const rows = await db
-    .select()
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
     .from(findings)
     .where(eq(findings.projectId, projectId));
-  return rows.length;
+  return row?.count ?? 0;
 }

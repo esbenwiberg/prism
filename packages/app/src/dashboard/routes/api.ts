@@ -34,6 +34,9 @@ import { requireApiKey, requirePermission } from "../../auth/api-key.js";
 
 export const apiRouter = Router();
 
+/** Index statuses that indicate the project has usable data for context assembly. */
+const INDEXED_STATUSES = new Set(["completed", "partial"]);
+
 // ---------------------------------------------------------------------------
 // POST /api/projects/:slug/search
 // ---------------------------------------------------------------------------
@@ -202,6 +205,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/file", requireApiKey, require
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { filePath, intent, maxTokens } = req.body as {
     filePath?: string;
@@ -218,8 +225,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/file", requireApiKey, require
     const response = await assembleFileContext({ projectId: project.id, filePath, intent, maxTokens });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, filePath, error: err instanceof Error ? err.message : String(err) }, "Context file failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, filePath, error: message }, "Context file failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -231,6 +239,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/module", requireApiKey, requi
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { modulePath, maxTokens } = req.body as {
     modulePath?: string;
@@ -246,8 +258,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/module", requireApiKey, requi
     const response = await assembleModuleContext({ projectId: project.id, modulePath, maxTokens });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, modulePath, error: err instanceof Error ? err.message : String(err) }, "Context module failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, modulePath, error: message }, "Context module failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -259,6 +272,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/related", requireApiKey, requ
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { query, maxResults, includeTests } = req.body as {
     query?: string;
@@ -275,8 +292,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/related", requireApiKey, requ
     const results = await assembleRelatedFiles({ projectId: project.id, query, maxResults, includeTests });
     res.json({ results });
   } catch (err) {
-    logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "Context related failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, query, error: message }, "Context related failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -288,6 +306,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/arch", requireApiKey, require
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { maxTokens } = req.body as { maxTokens?: number };
 
@@ -295,8 +317,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/arch", requireApiKey, require
     const response = await assembleArchitectureOverview({ projectId: project.id, maxTokens });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context arch failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, error: message }, "Context arch failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -308,6 +331,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/changes", requireApiKey, requ
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { filePath, modulePath, since, until, maxCommits, maxTokens } = req.body as {
     filePath?: string;
@@ -330,8 +357,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/changes", requireApiKey, requ
     });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context changes failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, error: message }, "Context changes failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -343,6 +371,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/review", requireApiKey, requi
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { since, until, maxTokens } = req.body as {
     since?: string;
@@ -364,8 +396,9 @@ apiRouter.post("/api/projects/:owner/:repo/context/review", requireApiKey, requi
     });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, error: err instanceof Error ? err.message : String(err) }, "Context review failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, error: message }, "Context review failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
 
@@ -377,6 +410,10 @@ apiRouter.post("/api/projects/:owner/:repo/context/enrich", requireApiKey, requi
   const slug = `${req.params.owner}/${req.params.repo}`;
   const project = await getProjectBySlug(slug);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!INDEXED_STATUSES.has(project.indexStatus)) {
+    res.status(404).json({ error: "Project not yet indexed" });
+    return;
+  }
 
   const { query, maxTokens } = req.body as {
     query?: string;
@@ -392,7 +429,8 @@ apiRouter.post("/api/projects/:owner/:repo/context/enrich", requireApiKey, requi
     const response = await assembleTaskContext({ projectId: project.id, query, maxTokens });
     res.json(response);
   } catch (err) {
-    logger.error({ slug, query, error: err instanceof Error ? err.message : String(err) }, "Context enrich failed");
-    res.status(500).json({ error: "Context assembly failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ slug, query, error: message }, "Context enrich failed");
+    res.status(500).json({ error: "Context assembly failed", detail: message });
   }
 });
