@@ -167,7 +167,7 @@ contextExplorerRouter.post("/projects/:id/context/query", async (req, res) => {
         }
         const maxTokens = parseIntOrDefault(req.body.maxTokens, 16000);
         const response = await assembleTaskContext({ projectId: id, query, maxTokens });
-        res.send(contextResponseFragment(response));
+        res.send(enrichResponseFragment(response));
         return;
       }
 
@@ -210,6 +210,69 @@ function contextResponseFragment(response: { sections: { heading: string; priori
     ${response.truncated ? '<span class="text-amber-400">Truncated</span>' : ""}
   </div>
   <pre class="bg-slate-900 border border-slate-700 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-[70vh] overflow-y-auto">${escapeHtml(markdown)}</pre>
+</div>`;
+}
+
+// Priority → display config
+const PRIORITY_META: Record<number, { color: string; badge: string }> = {
+  1: { color: "purple", badge: "P1 — Core" },
+  2: { color: "blue", badge: "P2 — Important" },
+  3: { color: "emerald", badge: "P3 — Supporting" },
+  4: { color: "slate", badge: "P4 — Extra" },
+};
+
+function priorityBadge(priority: number): string {
+  const meta = PRIORITY_META[priority] ?? { color: "slate", badge: `P${priority}` };
+  return `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-${meta.color}-500/15 text-${meta.color}-400 ring-1 ring-inset ring-${meta.color}-500/25">${meta.badge}</span>`;
+}
+
+function enrichResponseFragment(response: {
+  sections: { heading: string; priority: number; content: string; tokenCount: number }[];
+  totalTokens: number;
+  truncated: boolean;
+}): string {
+  if (response.sections.length === 0) {
+    return `<p class="text-sm text-slate-400">No context assembled. The project may need indexing.</p>`;
+  }
+
+  const sectionCards = response.sections
+    .map((section, idx) => {
+      const id = `enrich-section-${idx}`;
+      const lines = section.content.split("\n");
+      const preview = lines.slice(0, 3).join("\n");
+      const hasMore = lines.length > 3;
+
+      return `<details class="group rounded-lg border border-slate-700 bg-slate-800/40" ${idx < 3 ? "open" : ""}>
+  <summary class="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 select-none">
+    <div class="flex items-center gap-2.5 min-w-0">
+      ${priorityBadge(section.priority)}
+      <span class="text-sm font-medium text-slate-200 truncate">${escapeHtml(section.heading)}</span>
+    </div>
+    <div class="flex items-center gap-3 shrink-0">
+      <span class="text-[11px] text-slate-500">${section.tokenCount} tokens</span>
+      <svg class="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  </summary>
+  <div class="border-t border-slate-700 px-4 py-3">
+    <pre class="text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed">${escapeHtml(section.content)}</pre>
+  </div>
+</details>`;
+    })
+    .join("\n");
+
+  return `<div class="space-y-4">
+  <div class="flex flex-wrap items-center gap-4 text-xs">
+    <span class="text-slate-400">Tokens: <span class="text-slate-200 font-medium">${response.totalTokens.toLocaleString()}</span></span>
+    <span class="text-slate-400">Sections: <span class="text-slate-200 font-medium">${response.sections.length}</span></span>
+    ${response.truncated ? '<span class="text-amber-400 font-medium">Truncated</span>' : ""}
+    <button onclick="document.querySelectorAll('#context-result details').forEach(d => d.open = true)"
+            class="ml-auto text-[11px] text-purple-400 hover:text-purple-300 transition-colors">Expand all</button>
+    <button onclick="document.querySelectorAll('#context-result details').forEach(d => d.open = false)"
+            class="text-[11px] text-purple-400 hover:text-purple-300 transition-colors">Collapse all</button>
+  </div>
+  ${sectionCards}
 </div>`;
 }
 
