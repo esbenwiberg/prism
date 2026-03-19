@@ -39,6 +39,7 @@ function actionButtons(project: Project): string {
       hx-target="#job-progress"
       hx-swap="outerHTML"
       hx-vals='{"fullReindex": "true"}'
+      hx-confirm="This will clear all summaries, embeddings, findings, and history for this project and re-index from scratch. Continue?"
       class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-slate-50">
       Full re-index
     </button>
