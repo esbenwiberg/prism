@@ -65,15 +65,27 @@ export async function insertSummary(
 
 /**
  * Bulk insert summaries (upsert on project+level+target).
+ *
+ * Deduplicates inputs within the batch first — Postgres rejects
+ * ON CONFLICT DO UPDATE when the same row is affected twice in
+ * a single INSERT.
  */
 export async function bulkInsertSummaries(
   inputs: InsertSummaryInput[],
 ): Promise<SummaryRow[]> {
   if (inputs.length === 0) return [];
+
+  // Deduplicate: keep last occurrence per (projectId, level, targetId)
+  const seen = new Map<string, InsertSummaryInput>();
+  for (const input of inputs) {
+    seen.set(`${input.projectId}:${input.level}:${input.targetId}`, input);
+  }
+  const deduped = [...seen.values()];
+
   const db = getDb();
   return db
     .insert(summaries)
-    .values(inputs)
+    .values(deduped)
     .onConflictDoUpdate({
       target: [summaries.projectId, summaries.level, summaries.targetId],
       set: {
